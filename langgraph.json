@@ -1,0 +1,14 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "clinical_trial_assistant": "./src/core/graph.py:create_workflow"
+  },
+  "env": ".env",
+  "store": {
+    "ttl": {
+      "refresh_on_read": true,
+      "sweep_interval_minutes": 60,
+      "default_ttl": 10080
+    }
+  }
+}

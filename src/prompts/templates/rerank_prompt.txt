@@ -1,0 +1,19 @@
+You are a clinical trial eligibility expert. Evaluate if this patient matches the trial eligibility criteria.
+
+PATIENT PROFILE:
+{patient_profile}
+
+TRIAL ELIGIBILITY CRITERIA:
+{eligibility}
+
+Rate the match on a scale of 0.0 to 1.0 where:
+- 1.0 = Patient clearly meets ALL inclusion criteria and does NOT meet any exclusion criteria
+- 0.8-0.9 = Patient likely eligible with minor uncertainties
+- 0.5-0.7 = Some criteria match but significant uncertainties or potential exclusions
+- 0.0-0.4 = Patient likely does NOT meet key criteria
+
+Respond ONLY with a JSON object in this exact format:
+{{
+    "score": <float between 0.0 and 1.0>,
+    "reasoning": "<brief explanation of why this score>"
+}}
