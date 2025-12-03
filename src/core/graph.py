@@ -15,7 +15,7 @@ from src.prompts.prompts import (
     rerank_prompt,
     synthesis_prompt,
     reception_prompt,
-    trial_lookup_synthesis_prompt,
+    summarize_trial_prompt,
 )
 from src.config.settings import settings
 
@@ -99,8 +99,7 @@ def reception_node(state: GraphState) -> GraphState:
 
     if not user_input:
         return {
-            "needs_trial_search": False,
-            "needs_trial_lookup": False,
+            "query_type": "CHITCHAT",
             "trial_ids": [],
             "chitchat_response": "I'm here to help you find clinical trials. Please tell me about your condition or what you're looking for.",
         }
@@ -140,66 +139,40 @@ def reception_node(state: GraphState) -> GraphState:
     elif "```" in content:
         content = content.split("```")[1].split("```")[0].strip()
 
-    try:
-        result = json.loads(content)
+    result = json.loads(content)
 
-        # Update messages with user input and response
-        updated_messages = list(messages) if messages else []
-        updated_messages.append(HumanMessage(content=user_input))
+    # Update messages with user input
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(HumanMessage(content=user_input))
 
-        # Add assistant response if chitchat
-        if result.get("chitchat_response"):
-            updated_messages.append(
-                AIMessage(content=result.get("chitchat_response", ""))
-            )
+    # Add assistant response if chitchat
+    if result.get("chitchat_response"):
+        updated_messages.append(AIMessage(content=result.get("chitchat_response", "")))
 
-        return {
-            "messages": updated_messages,
-            "needs_trial_search": bool(result.get("needs_trial_search", False)),
-            "needs_trial_lookup": bool(result.get("needs_trial_lookup", False)),
-            "trial_ids": result.get("trial_ids", []),
-            "chitchat_response": result.get("chitchat_response", ""),
-            "search_query": result.get("search_query", ""),
-            "patient_profile": result.get("patient_profile", ""),
-        }
-    except json.JSONDecodeError:
-        # Fallback: try to detect trial IDs
-        import re
-
-        # Update messages with user input
-        updated_messages = list(messages) if messages else []
-        updated_messages.append(HumanMessage(content=user_input))
-
-        trial_ids = re.findall(r"NCT\d{8}", user_input)
-        if trial_ids:
-            return {
-                "messages": updated_messages,
-                "needs_trial_search": False,
-                "needs_trial_lookup": True,
-                "trial_ids": trial_ids,
-                "chitchat_response": "",
-                "search_query": "",
-                "patient_profile": "",
-            }
-        # Otherwise assume patient matching
-        return {
-            "messages": updated_messages,
-            "needs_trial_search": True,
-            "needs_trial_lookup": False,
-            "trial_ids": [],
-            "chitchat_response": "",
-            "search_query": user_input,
-            "patient_profile": user_input,
-        }
+    return {
+        "messages": updated_messages,
+        "query_type": result.get("query_type", "CHITCHAT"),
+        "clarification_type": result.get("clarification_type", ""),
+        "clarification_context": result.get("clarification_context", ""),
+        "trial_search_query": result.get("trial_search_query", ""),
+        "trial_ids": result.get("trial_ids", []),
+        "chitchat_response": result.get("chitchat_response", ""),
+        "search_query": result.get("search_query", ""),
+        "patient_profile": result.get("patient_profile", ""),
+    }
 
 
 def route_query(state: GraphState) -> str:
     """Conditional edge function: route based on query type"""
-    if state.get("needs_trial_lookup", False):
-        return "lookup_trials"
-    elif state.get("needs_trial_search", False):
+    query_type = state.get("query_type", "CHITCHAT")
+
+    if query_type == "CLARIFY":
+        return "clarify"
+    elif query_type == "SUMMARIZE_TRIAL":
+        return "summarize_trial"
+    elif query_type == "FIND_TRIALS":
         return "search"
-    else:
+    else:  # CHITCHAT
         return "chitchat_response"
 
 
@@ -213,8 +186,13 @@ async def search_clinical_trials_node(state: GraphState) -> GraphState:
     search_text = patient_profile if patient_profile else query
 
     # Directly call the async function - no need for event loop juggling!
-    search_results = await es_searcher.search_with_full_documents(
-        search_text, top_k=top_k
+    search_results = await es_searcher.get_trials_by_text(
+        search_text,
+        top_k=top_k,
+        return_fields=[
+            "eligibility_criteria",
+            "official_title",
+        ],
     )
 
     # Format results with eligibility criteria
@@ -222,11 +200,7 @@ async def search_clinical_trials_node(state: GraphState) -> GraphState:
     for result in search_results:
         source = result.get("source", {})
         nct_id = source.get("nct_id") or source.get("id") or result.get("id", "N/A")
-        title = (
-            source.get("brief_title")
-            or source.get("official_title")
-            or source.get("text", "")[:200] + "..."
-        )
+        title = source.get("official_title")
         eligibility = source.get("eligibility_criteria", "")
 
         formatted_results.append(
@@ -267,35 +241,28 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
             patient_profile=patient_profile, eligibility=eligibility
         )
 
-        try:
-            config = RunnableConfig(
-                metadata={"node": "rerank_with_llm", "operation": "trial_scoring"},
-                tags=["rerank", "cross-encoder", "trial-matching"],
-                run_name="rerank_trial_scoring",
-            )
-            response = await cross_encoder_llm.ainvoke(
-                [HumanMessage(content=prompt)], config=config
-            )
-            content = response.content.strip()
+        config = RunnableConfig(
+            metadata={"node": "rerank_with_llm", "operation": "trial_scoring"},
+            tags=["rerank", "cross-encoder", "trial-matching"],
+            run_name="rerank_trial_scoring",
+        )
+        response = await cross_encoder_llm.ainvoke(
+            [HumanMessage(content=prompt)], config=config
+        )
+        content = response.content.strip()
 
-            # Extract JSON from response
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+        # Extract JSON from response
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
 
-            result = json.loads(content)
-            return {
-                **trial,
-                "llm_score": float(result.get("score", 0.0)),
-                "match_reasoning": result.get("reasoning", "No reasoning provided"),
-            }
-        except Exception as e:
-            return {
-                **trial,
-                "llm_score": 0.0,
-                "match_reasoning": f"Error in LLM evaluation: {str(e)}",
-            }
+        result = json.loads(content)
+        return {
+            **trial,
+            "llm_score": float(result.get("score", 0.0)),
+            "match_reasoning": result.get("reasoning", "No reasoning provided"),
+        }
 
     # Run all LLM calls in parallel - much simpler with async node!
     tasks = [score_trial(trial) for trial in search_results]
@@ -382,30 +349,122 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     }
 
 
-def lookup_trials_by_id_node(state: GraphState) -> GraphState:
-    """Node: Lookup specific trials by their IDs"""
+async def clarify_node(state: GraphState) -> GraphState:
+    """Node: Generate clarification response using LLM when user needs to provide more information"""
+    clarification_type = state.get("clarification_type", "")
+    clarification_context = state.get("clarification_context", "")
+    trial_search_query = state.get("trial_search_query", "")
+    user_input = state.get("user_input", "")
+    messages = state.get("messages", [])
+
+    # Get conversation context
+    context, context_instruction = get_conversation_context(state, max_messages=3)
+    conversation_context_section = (
+        f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
+    )
+
+    # Perform search if needed
+    clarification_search_results = []
+    if clarification_type == "trial_id" and trial_search_query:
+        try:
+            clarification_search_results = await es_searcher.get_trials_by_text(
+                trial_search_query,
+                top_k=5,
+                return_fields=["nct_id", "official_title", "brief_summary"],
+            )
+            if clarification_search_results:
+                clarification_context += f" I searched and found {len(clarification_search_results)} matching trials."
+            else:
+                clarification_context += f" I searched but found no matching trials for '{trial_search_query}'."
+        except Exception as e:
+            clarification_context += (
+                f" I encountered an error while searching: {str(e)}"
+            )
+
+    # Format search results and instructions based on what information we have
+    search_results_section = ""
+    clarification_instructions = ""
+
+    if clarification_type == "trial_id":
+        if clarification_search_results:
+            # Case 2a: Search performed and found results
+            search_results_section = "SEARCH RESULTS:\n"
+            for i, trial in enumerate(clarification_search_results, 1):
+                nct_id = trial.get("nct_id", "N/A")
+                title = trial.get("official_title", "N/A")
+                brief_summary = trial.get("brief_summary", "N/A")
+                search_results_section += f"{i}. {nct_id}: {title}\n{brief_summary}\n"
+            clarification_instructions = "Present the search results in a clear, numbered list and ask the user to provide the specific trial ID (NCT number) they want to summarize."
+        elif trial_search_query:
+            # Case 2b: Search performed but no results found
+            clarification_instructions = f"Briefly explain that no trials were found for '{trial_search_query}' and ask for a specific trial ID (NCT number)."
+        else:
+            # Case 1: No search performed - user gave no information
+            clarification_instructions = "Briefly ask the user to provide a trial ID (format: NCT12345678) to summarize. Keep it short and friendly."
+    elif clarification_type == "patient_profile":
+        clarification_instructions = "Asks the user to provide patient information such as age, gender, medical condition, diagnosis, or current treatment status"
+    else:
+        clarification_instructions = (
+            "Asks the user to provide the missing information needed to proceed"
+        )
+
+    # Create LLM instance for clarification
+    clarify_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+
+    from src.prompts.prompts import clarification_prompt
+
+    prompt = clarification_prompt.format(
+        user_input=user_input,
+        clarification_context=clarification_context,
+        clarification_instructions=clarification_instructions,
+        search_results_section=search_results_section,
+        conversation_context=conversation_context_section,
+        context_instruction=context_instruction,
+    )
+
+    config = RunnableConfig(
+        metadata={
+            "node": "clarify",
+            "operation": "clarification",
+        },
+        tags=["clarification", "user-interaction"],
+        run_name="clarify",
+    )
+    response = clarify_llm.invoke([HumanMessage(content=prompt)], config=config)
+    clarification_response = response.content.strip()
+
+    # Update messages with clarification response
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(AIMessage(content=clarification_response))
+
+    return {
+        "chitchat_response": clarification_response,
+        "messages": updated_messages,
+    }
+
+
+def summarize_trial_node(state: GraphState) -> GraphState:
+    """Node: Summarize specific clinical trial(s) by their IDs"""
     trial_ids = state.get("trial_ids", [])
     messages = state.get("messages", [])
+    user_input = state.get("user_input", "")
 
     if not trial_ids:
         final_answer = "I couldn't find any trial IDs in your query. Please provide trial IDs in the format NCT12345678."
-        # Update messages
         updated_messages = list(messages) if messages else []
         updated_messages.append(AIMessage(content=final_answer))
         return {
-            "trial_lookup_results": [],
             "final_answer": final_answer,
             "messages": updated_messages,
         }
 
-    # Fetch trials from Elasticsearch by ID - direct sync call, no need for async/threading
-    results = []
+    # Fetch trials from Elasticsearch by ID
+    trial_results = []
     for trial_id in trial_ids:
         try:
-            # Get document by ID from Elasticsearch
             doc = es_searcher.es.client.get(index=es_searcher.index_name, id=trial_id)
             source = doc.get("_source", {})
-            results.append(
+            trial_results.append(
                 {
                     "nct_id": trial_id,
                     "title": source.get("brief_title")
@@ -416,28 +475,21 @@ def lookup_trials_by_id_node(state: GraphState) -> GraphState:
                     "locations": source.get("locations", "N/A"),
                     "phase": source.get("phase", "N/A"),
                     "status": source.get("overall_status", "N/A"),
+                    "start_date": source.get("start_date", "N/A"),
+                    "completion_date": source.get("completion_date", "N/A"),
+                    "primary_outcome": source.get("primary_outcome_measure", "N/A"),
                 }
             )
         except Exception as e:
-            results.append(
+            trial_results.append(
                 {
                     "nct_id": trial_id,
                     "error": f"Trial {trial_id} not found: {str(e)}",
                 }
             )
 
-    return {"trial_lookup_results": results}
-
-
-def synthesize_trial_lookup_node(state: GraphState) -> GraphState:
-    """Node: Synthesize trial lookup results into a natural answer"""
-    trial_results = state.get("trial_lookup_results", [])
-    user_input = state.get("user_input", "")
-    messages = state.get("messages", [])
-
-    if not trial_results:
+    if not trial_results or all("error" in trial for trial in trial_results):
         final_answer = "I couldn't find information about the requested trial(s)."
-        # Update messages
         updated_messages = list(messages) if messages else []
         updated_messages.append(AIMessage(content=final_answer))
         return {
@@ -445,22 +497,32 @@ def synthesize_trial_lookup_node(state: GraphState) -> GraphState:
             "messages": updated_messages,
         }
 
-    # Format trial information for synthesis
+    # Format trial information for summarization
     trials_text = ""
     for trial in trial_results:
         if "error" in trial:
             trials_text += f"\n- {trial['nct_id']}: {trial['error']}\n"
         else:
-            trials_text += f"\nTrial: {trial.get('nct_id', 'N/A')}\n"
+            trials_text += f"\nTrial ID: {trial.get('nct_id', 'N/A')}\n"
             trials_text += f"Title: {trial.get('title', 'N/A')}\n"
             trials_text += f"Phase: {trial.get('phase', 'N/A')}\n"
             trials_text += f"Status: {trial.get('status', 'N/A')}\n"
-            summary = trial.get("brief_summary", "")
-            if summary:
-                trials_text += f"Summary: {summary[:300]}...\n"
-            eligibility = trial.get("eligibility_criteria", "")
-            if eligibility:
-                trials_text += f"Eligibility: {eligibility[:200]}...\n"
+            if trial.get("brief_summary"):
+                trials_text += f"Summary: {trial.get('brief_summary')}\n"
+            if trial.get("detailed_description"):
+                trials_text += (
+                    f"Description: {trial.get('detailed_description')[:500]}...\n"
+                )
+            if trial.get("eligibility_criteria"):
+                trials_text += f"Eligibility: {trial.get('eligibility_criteria')}...\n"
+            if trial.get("primary_outcome") and trial.get("primary_outcome") != "N/A":
+                trials_text += f"Primary Outcome: {trial.get('primary_outcome')}\n"
+            if trial.get("start_date") and trial.get("start_date") != "N/A":
+                trials_text += f"Start Date: {trial.get('start_date')}\n"
+            if trial.get("completion_date") and trial.get("completion_date") != "N/A":
+                trials_text += f"Completion Date: {trial.get('completion_date')}\n"
+            if trial.get("locations") and trial.get("locations") != "N/A":
+                trials_text += f"Locations: {trial.get('locations')}\n"
 
     # Get conversation context
     context, context_instruction = get_conversation_context(state, max_messages=3)
@@ -468,12 +530,12 @@ def synthesize_trial_lookup_node(state: GraphState) -> GraphState:
         f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
     )
 
-    # Create LLM to synthesize the answer
+    # Create LLM to summarize the trial(s)
     synthesis_llm = ChatOpenAI(
         model=settings.llm_model, temperature=settings.temperature
     )
 
-    prompt = trial_lookup_synthesis_prompt.format(
+    prompt = summarize_trial_prompt.format(
         user_input=user_input,
         trial_information=trials_text,
         conversation_context=conversation_context_section,
@@ -482,11 +544,11 @@ def synthesize_trial_lookup_node(state: GraphState) -> GraphState:
 
     config = RunnableConfig(
         metadata={
-            "node": "synthesize_trial_lookup",
-            "operation": "trial_info_synthesis",
+            "node": "summarize_trial",
+            "operation": "trial_summarization",
         },
-        tags=["trial-lookup", "answer-generation"],
-        run_name="synthesize_trial_lookup",
+        tags=["trial-summary", "answer-generation"],
+        run_name="summarize_trial",
     )
     response = synthesis_llm.invoke([HumanMessage(content=prompt)], config=config)
     final_answer = response.content.strip()
@@ -498,7 +560,6 @@ def synthesize_trial_lookup_node(state: GraphState) -> GraphState:
     return {
         "final_answer": final_answer,
         "messages": updated_messages,
-        "lookup_synthesis_prompt": prompt,
     }
 
 
@@ -512,31 +573,34 @@ def create_workflow():
 
     # Add nodes
     workflow.add_node("reception", reception_node)
+    workflow.add_node("clarify", clarify_node)
     workflow.add_node("search", search_clinical_trials_node)
     workflow.add_node("rerank", rerank_with_llm_node)
     workflow.add_node("synthesize", synthesize_answer_node)
-    workflow.add_node("lookup_trials", lookup_trials_by_id_node)
-    workflow.add_node("synthesize_lookup", synthesize_trial_lookup_node)
+    workflow.add_node("summarize_trial", summarize_trial_node)
 
     # Define edges with conditional routing
     workflow.set_entry_point("reception")
 
-    # Reception routes to: lookup, search, or chitchat
+    # Reception routes to: clarify, summarize_trial, search, or chitchat
     workflow.add_conditional_edges(
         "reception",
         route_query,
         {
-            "lookup_trials": "lookup_trials",
+            "clarify": "clarify",
+            "summarize_trial": "summarize_trial",
             "search": "search",
             "chitchat_response": END,  # chitchat_response is handled in state
         },
     )
 
-    # Trial lookup flow
-    workflow.add_edge("lookup_trials", "synthesize_lookup")
-    workflow.add_edge("synthesize_lookup", END)
+    # Clarification flow
+    workflow.add_edge("clarify", END)
 
-    # Patient matching flow
+    # Trial summarization flow
+    workflow.add_edge("summarize_trial", END)
+
+    # Find trials flow (patient matching)
     workflow.add_edge("search", "rerank")
     workflow.add_edge("rerank", "synthesize")
     workflow.add_edge("synthesize", END)

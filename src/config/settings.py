@@ -5,6 +5,7 @@ This module defines all configuration settings for the trial matching system
 using Pydantic BaseSettings for type safety and validation.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -54,10 +55,17 @@ class Settings(BaseSettings):
 # Create global settings instance
 settings = Settings()
 
+# Configure environment variables from settings
+
+
+# Set OpenAI API key and base URL if provided in settings
+if settings.openai_api_key:
+    os.environ["OPENAI_API_KEY"] = settings.openai_api_key
+if settings.openai_base_url:
+    os.environ["OPENAI_BASE_URL"] = settings.openai_base_url
+
 # Configure LangSmith tracing if enabled
 if settings.langchain_tracing_v2 and settings.langchain_api_key:
-    import os
-
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
     if settings.langchain_project:

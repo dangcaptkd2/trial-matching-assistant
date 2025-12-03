@@ -51,7 +51,7 @@ class WorkflowResponse(BaseModel):
 
     response: str = Field(..., description="Final response to user")
     response_type: str = Field(
-        ..., description="Type of response: 'chitchat', 'trial_search', 'trial_lookup'"
+        ..., description="Type of response: 'chitchat', 'trial_search', 'trial_summary'"
     )
     execution_trace: Optional[ExecutionTrace] = Field(
         None, description="Execution trace data"

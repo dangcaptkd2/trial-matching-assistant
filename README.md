@@ -35,6 +35,7 @@ Create a `.env` file:
 ```bash
 # OpenAI
 OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1  # Optional: custom OpenAI-compatible API endpoint
 
 # Elasticsearch
 ELASTICSEARCH_URL=http://localhost:9200

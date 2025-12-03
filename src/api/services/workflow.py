@@ -192,10 +192,14 @@ class WorkflowService:
 
     def _determine_response_type(self, result: Dict) -> str:
         """Determine the type of response."""
-        if result.get("chitchat_response"):
+        query_type = result.get("query_type", "")
+
+        if query_type == "CLARIFY" or result.get("chitchat_response"):
             return "chitchat"
-        elif result.get("trial_lookup_results"):
-            return "trial_lookup"
+        elif query_type == "SUMMARIZE_TRIAL":
+            return "trial_summary"
+        elif query_type == "FIND_TRIALS":
+            return "trial_search"
         elif result.get("final_answer"):
             return "trial_search"
         return "unknown"

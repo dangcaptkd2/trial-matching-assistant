@@ -15,4 +15,5 @@ def _load_prompt(filename: str) -> str:
 rerank_prompt = _load_prompt("rerank_prompt.txt")
 synthesis_prompt = _load_prompt("synthesis_prompt.txt")
 reception_prompt = _load_prompt("reception_prompt.txt")
-trial_lookup_synthesis_prompt = _load_prompt("trial_lookup_synthesis_prompt.txt")
+summarize_trial_prompt = _load_prompt("summarize_trial_prompt.txt")
+clarification_prompt = _load_prompt("clarification_prompt.txt")

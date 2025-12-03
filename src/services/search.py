@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from src.dependency.myelasticsearch import ElasticsearchService
 
@@ -110,10 +110,11 @@ class ElasticsearchTrialSearcher:
 
         return results
 
-    async def search_trials_by_text(
+    async def get_trials_by_text(
         self,
         patient_profile: str,
         top_k: int = 20,
+        return_fields: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
         Search for clinical trials matching patient profile using only the 'text' field.
@@ -124,9 +125,11 @@ class ElasticsearchTrialSearcher:
         Args:
             patient_profile: Patient profile text to search
             top_k: Number of results to return
+            return_fields: Optional list of field names to return from Elasticsearch.
+                          If None, returns all fields. Example: ["nct_id", "brief_title"]
 
         Returns:
-            List of trial results with id and distance (score)
+            List of trial results with id, distance (score), and optionally source fields
         """
 
         query_text = self._prepare_search_text(patient_profile)
@@ -149,6 +152,10 @@ class ElasticsearchTrialSearcher:
             "query": query,
         }
 
+        # Add _source filter if return_fields is specified
+        if return_fields is not None:
+            body["_source"] = return_fields
+
         # Run sync ES call in a thread to keep async API symmetric
         import asyncio
 
@@ -160,12 +167,14 @@ class ElasticsearchTrialSearcher:
         hits = resp.get("hits", {}).get("hits", [])
         results: List[Dict] = []
         for h in hits:
-            results.append(
-                {
-                    "id": h.get("_id"),
-                    "distance": float(h.get("_score", 0.0)),
-                }
-            )
+            result = {
+                "id": h.get("_id"),
+                "distance": float(h.get("_score", 0.0)),
+            }
+            # Add source fields if they exist
+            if "_source" in h:
+                result.update(h["_source"])
+            results.append(result)
 
         return results
 
@@ -284,10 +293,10 @@ def demo():
         index_name = settings.es_index_name
         searcher = ElasticsearchTrialSearcher(index_name=index_name)
 
-        results = await searcher.search_and_format_by_text(patient_profile, top_k=5)
-        print(f"Found {len(results)} trials")
-        for i, trial in enumerate(results[:5], 1):
-            print(f"{i}. {trial['id']} (Score: {trial['score']:.3f})")
+        results = await searcher.get_trials_by_text(
+            patient_profile, top_k=5, return_fields=["nct_id", "brief_title"]
+        )
+        print(results)
 
     asyncio.run(run_demo())
 
