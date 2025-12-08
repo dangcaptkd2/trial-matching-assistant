@@ -221,3 +221,4 @@ drafts/
 scripts/
 uv.lock
 .DS_Store
+data/

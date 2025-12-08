@@ -8,6 +8,8 @@ MATCHED TRIALS (sorted by relevance): {reranked_trials}
 
 {context_instruction}
 
+IMPORTANT: Only use information from MATCHED TRIALS above. Do not use general knowledge or make assumptions.
+
 RESPONSE STRUCTURE:
 
 1. **Brief opening** (1-2 sentences, conversational - vary your phrasing, don't always say "Great news")

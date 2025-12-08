@@ -7,6 +7,8 @@ TRIAL INFORMATION:
 
 {context_instruction}
 
+IMPORTANT: Only use information from TRIAL INFORMATION above. Do not use general knowledge or add details not provided.
+
 USER REQUEST:
 {user_input}
 

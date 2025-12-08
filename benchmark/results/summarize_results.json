@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-12-08T17:28:28.738989",
+  "total_trials": 2,
+  "results": [
+    {
+      "trial_id": "NCT02132585",
+      "query": "Summarize NCT02132585",
+      "response": "- This study investigates the use of speckle tracking echocardiography (STE) to detect early heart dysfunction in patients with Sjogren Syndrome.  \n- It is a preliminary, cross-sectional study with no specified phase or current status.  \n- Participants must have Sjogren Syndrome and no history of heart problems like heart failure, stroke, or previous cardiovascular events.  \n- The goal is to see if STE can help identify heart issues early in these patients.",
+      "execution_time": 2.917739,
+      "llm_scores": {
+        "hallucination": 2,
+        "hallucination_reasoning": "The summary claims the study is 'preliminary' and 'cross-sectional,' but without access to the actual trial data, it's unclear if these descriptors are accurate. The mention of no specified phase or current status may be unsupported or incomplete, indicating some potential inaccuracies.",
+        "accuracy": 3,
+        "accuracy_reasoning": "The summary captures the main objective and methodology (using STE to detect early heart dysfunction in Sjogren Syndrome patients) and mentions key eligibility criteria. However, it omits details such as sample size, specific outcomes measured, or trial endpoints, which are important for full accuracy.",
+        "clarity": 4,
+        "clarity_reasoning": "The summary is clear, concise, and well-organized, effectively conveying the study's purpose, design, and population in four bullet points. Slight improvements could be made for even greater clarity, but overall it is understandable and professional."
+      }
+    },
+    {
+      "trial_id": "NCT03341637",
+      "query": "Summarize NCT03341637",
+      "response": "The NCT03341637 trial studied the safety and immune response of a tetravalent dengue vaccine (TDV) in healthy adolescents aged 12-17 in non-endemic areas. The study involved 400 participants who received two doses of the vaccine or a placebo. The main goal was to see if the vaccine produced neutralizing antibodies against dengue. The trial's status and phase are not specified. Participants needed to be healthy, not pregnant, and have no recent other vaccinations or flavivirus infections.",
+      "execution_time": 2.244666,
+      "llm_scores": {
+        "hallucination": 4,
+        "hallucination_reasoning": "The summary is mostly accurate and grounded in typical trial data, with no obvious fabricated details. However, it omits the trial phase and status, which are often specified in official records, indicating minor unsupported details.",
+        "accuracy": 4,
+        "accuracy_reasoning": "The summary correctly describes the study population, intervention, primary goal, and key eligibility criteria. It accurately reflects the trial's focus on safety and immune response in adolescents receiving a dengue vaccine. Some specifics, such as the trial phase and detailed outcomes, are missing but do not significantly detract from overall accuracy.",
+        "clarity": 4,
+        "clarity_reasoning": "The summary is clear, concise, and well-organized, effectively conveying the main points in four sentences. Slight improvements could be made for even greater clarity or completeness, but it is generally understandable and professional."
+      }
+    }
+  ]
+}
