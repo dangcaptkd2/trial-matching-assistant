@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -13,6 +14,7 @@ from src.core.memory import get_checkpointer
 from src.core.state import GraphState
 from src.prompts.prompts import (
     clarification_prompt,
+    intent_classification_prompt,
     reception_prompt,
     rerank_prompt,
     summarize_trial_prompt,
@@ -59,9 +61,7 @@ def needs_conversation_context(user_input: str, has_history: bool) -> bool:
     return has_reference or is_short_query
 
 
-def get_conversation_context(
-    state: GraphState, max_messages: int = 3
-) -> tuple[str, str]:
+def get_conversation_context(state: GraphState, max_messages: int = 3) -> tuple[str, str]:
     """
     Get conversation context using hybrid approach (rules decide).
 
@@ -92,32 +92,29 @@ def get_conversation_context(
     return context, instruction
 
 
-def reception_node(state: GraphState) -> GraphState:
-    """Node: Reception - Classify user input and route accordingly"""
+def intent_classification_node(state: GraphState) -> GraphState:
+    """Node: Intent Classification - Let LLM decide intent and what info is provided"""
     user_input = state.get("user_input", "")
     messages = state.get("messages", [])
 
     if not user_input:
         return {
-            "query_type": "CHITCHAT",
-            "trial_ids": [],
-            "chitchat_response": "I'm here to help you find clinical trials. Please tell me about your condition or what you're looking for.",
+            "intent_type": "NEEDS_CLARIFICATION",
+            "has_patient_info": False,
+            "has_trial_id": False,
+            "clarification_reason": "empty input",
         }
 
     # Get conversation context using hybrid approach
     context, context_instruction = get_conversation_context(state, max_messages=3)
 
-    # Create LLM instance for reception
-    reception_llm = ChatOpenAI(
-        model=settings.llm_model, temperature=settings.temperature
-    )
+    # Create LLM instance for intent classification
+    intent_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     # Format prompt with context
-    conversation_context_section = (
-        f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
-    )
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
-    prompt = reception_prompt.format(
+    prompt = intent_classification_prompt.format(
         user_input=user_input,
         conversation_context=conversation_context_section,
         context_instruction=context_instruction,
@@ -125,12 +122,12 @@ def reception_node(state: GraphState) -> GraphState:
 
     # Use config to identify this node in LangSmith
     config = RunnableConfig(
-        metadata={"node": "reception"},
-        tags=["reception"],
-        run_name="reception",
+        metadata={"node": "intent_classification"},
+        tags=["intent_classification"],
+        run_name="intent_classification",
     )
 
-    response = reception_llm.invoke([HumanMessage(content=prompt)], config=config)
+    response = intent_llm.invoke([HumanMessage(content=prompt)], config=config)
     content = response.content.strip()
 
     # Extract JSON from response
@@ -145,35 +142,75 @@ def reception_node(state: GraphState) -> GraphState:
     updated_messages = list(messages) if messages else []
     updated_messages.append(HumanMessage(content=user_input))
 
-    # Add assistant response if chitchat
-    if result.get("chitchat_response"):
-        updated_messages.append(AIMessage(content=result.get("chitchat_response", "")))
-
+    # Return LLM's decisions directly (no rule-based logic)
     return {
         "messages": updated_messages,
-        "query_type": result.get("query_type", "CHITCHAT"),
-        "clarification_type": result.get("clarification_type", ""),
-        "clarification_context": result.get("clarification_context", ""),
-        "trial_search_query": result.get("trial_search_query", ""),
-        "trial_ids": result.get("trial_ids", []),
-        "chitchat_response": result.get("chitchat_response", ""),
-        "search_query": result.get("search_query", ""),
-        "patient_profile": result.get("patient_profile", ""),
+        "intent_type": result.get("intent_type", "NEEDS_CLARIFICATION"),
+        "has_patient_info": result.get("has_patient_info", False),
+        "has_trial_id": result.get("has_trial_id", False),
+        "clarification_reason": result.get("clarification_reason", ""),
+        # Pass user input for later use (for search and extraction)
+        "patient_profile": user_input if result.get("has_patient_info") else "",
+        "search_query": user_input if result.get("has_patient_info") else "",
     }
 
 
-def route_query(state: GraphState) -> str:
-    """Conditional edge function: route based on query type"""
-    query_type = state.get("query_type", "CHITCHAT")
+def reception_node(state: GraphState) -> GraphState:
+    """Node: Reception - Handle greetings and off-topic queries"""
+    user_input = state.get("user_input", "")
+    intent_type = state.get("intent_type", "")
+    messages = state.get("messages", [])
 
-    if query_type == "CLARIFY":
-        return "clarify"
-    elif query_type == "SUMMARIZE_TRIAL":
-        return "summarize_trial"
-    elif query_type == "FIND_TRIALS":
+    # Get conversation context
+    context, context_instruction = get_conversation_context(state, max_messages=3)
+
+    # Create LLM instance for reception
+    reception_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+
+    # Format prompt with context
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
+
+    prompt = reception_prompt.format(
+        user_input=user_input,
+        intent_type=intent_type,
+        conversation_context=conversation_context_section,
+        context_instruction=context_instruction,
+    )
+
+    # Use config to identify this node in LangSmith
+    config = RunnableConfig(
+        metadata={"node": "reception"},
+        tags=["reception"],
+        run_name="reception",
+    )
+
+    response = reception_llm.invoke([HumanMessage(content=prompt)], config=config)
+    chitchat_response = response.content.strip()
+
+    # Update messages with assistant response
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(AIMessage(content=chitchat_response))
+
+    return {
+        "messages": updated_messages,
+        "chitchat_response": chitchat_response,
+    }
+
+
+def route_from_intent(state: GraphState) -> str:
+    """Conditional edge function: route based on intent type"""
+    intent_type = state.get("intent_type", "NEEDS_CLARIFICATION")
+
+    if intent_type == "GREETING" or intent_type == "OFF_TOPIC":
+        return "reception"
+    elif intent_type == "FIND_TRIALS":
+        # Always search - intent type means they have patient info
         return "search"
-    else:  # CHITCHAT
-        return "chitchat_response"
+    elif intent_type == "SUMMARIZE_TRIAL":
+        # Always summarize - intent type means they have trial ID
+        return "summarize_trial"
+    else:  # NEEDS_CLARIFICATION
+        return "clarify"
 
 
 async def search_clinical_trials_node(state: GraphState) -> GraphState:
@@ -223,9 +260,7 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
         return {"reranked_results": []}
 
     # Create LLM instance for cross-encoding
-    cross_encoder_llm = ChatOpenAI(
-        model=settings.llm_model, temperature=settings.temperature
-    )
+    cross_encoder_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     async def score_trial(trial: dict) -> dict:
         """Use LLM to score a single trial against patient profile"""
@@ -237,18 +272,14 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
                 "match_reasoning": "No eligibility criteria available",
             }
 
-        prompt = rerank_prompt.format(
-            patient_profile=patient_profile, eligibility=eligibility
-        )
+        prompt = rerank_prompt.format(patient_profile=patient_profile, eligibility=eligibility)
 
         config = RunnableConfig(
             metadata={"node": "rerank_with_llm", "operation": "trial_scoring"},
             tags=["rerank", "cross-encoder", "trial-matching"],
             run_name="rerank_trial_scoring",
         )
-        response = await cross_encoder_llm.ainvoke(
-            [HumanMessage(content=prompt)], config=config
-        )
+        response = await cross_encoder_llm.ainvoke([HumanMessage(content=prompt)], config=config)
         content = response.content.strip()
 
         # Extract JSON from response
@@ -313,14 +344,10 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
 
     # Get conversation context
     context, context_instruction = get_conversation_context(state, max_messages=3)
-    conversation_context_section = (
-        f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
-    )
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
     # Create LLM instance for synthesis
-    synthesis_llm = ChatOpenAI(
-        model=settings.llm_model, temperature=settings.temperature
-    )
+    synthesis_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     prompt = synthesis_prompt.format(
         patient_profile=patient_profile,
@@ -350,60 +377,61 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
 
 
 async def clarify_node(state: GraphState) -> GraphState:
-    """Node: Generate clarification response using LLM when user needs to provide more information"""
-    clarification_type = state.get("clarification_type", "")
-    clarification_context = state.get("clarification_context", "")
-    trial_search_query = state.get("trial_search_query", "")
+    """Node: Generate clarification response when user needs to provide more information"""
     user_input = state.get("user_input", "")
     messages = state.get("messages", [])
+    clarification_reason = state.get("clarification_reason", "")
+    has_patient_info = state.get("has_patient_info", False)
+    has_trial_id = state.get("has_trial_id", False)
 
     # Get conversation context
     context, context_instruction = get_conversation_context(state, max_messages=3)
-    conversation_context_section = (
-        f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
-    )
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
-    # Perform search if needed
-    clarification_search_results = []
-    if clarification_type == "trial_id" and trial_search_query:
-        clarification_search_results = await es_searcher.get_trials_by_text(
-            trial_search_query,
-            top_k=5,
-            return_fields=["nct_id", "official_title", "brief_summary"],
-        )
-        if clarification_search_results:
-            clarification_context += f" I searched and found {len(clarification_search_results)} matching trials."
-        else:
-            clarification_context += (
-                f" I searched but found no matching trials for '{trial_search_query}'."
-            )
-
-    # Format search results and instructions based on what information we have
+    # Determine what needs clarification based on flags and reason
+    clarification_context = clarification_reason
     search_results_section = ""
     clarification_instructions = ""
 
-    if clarification_type == "trial_id":
-        if clarification_search_results:
-            # Case 2a: Search performed and found results
-            search_results_section = "SEARCH RESULTS:\n"
-            for i, trial in enumerate(clarification_search_results, 1):
-                nct_id = trial.get("nct_id", "N/A")
-                title = trial.get("official_title", "N/A")
-                brief_summary = trial.get("brief_summary", "N/A")
-                search_results_section += f"{i}. {nct_id}: {title}\n{brief_summary}\n"
-            clarification_instructions = "Present the search results in a clear, numbered list and ask the user to provide the specific trial ID (NCT number) they want to summarize."
-        elif trial_search_query:
-            # Case 2b: Search performed but no results found
-            clarification_instructions = f"Briefly explain that no trials were found for '{trial_search_query}' and ask for a specific trial ID (NCT number)."
+    # Check clarification reason to understand what user wanted
+    reason_lower = clarification_reason.lower()
+    wants_find_trials = "find" in reason_lower or "search" in reason_lower
+    wants_summarize = "summary" in reason_lower or "summarize" in reason_lower
+
+    if wants_find_trials and not has_patient_info:
+        # User wants to find trials but no patient information provided
+        clarification_instructions = "Ask the user to provide patient information such as age, gender, medical condition, diagnosis, symptoms, or current treatment status. Keep it conversational and friendly."
+    elif wants_summarize and not has_trial_id:
+        # User wants to summarize but no trial ID provided
+        if has_patient_info:
+            # User provided patient info but no trial ID - search and show options
+            search_query = user_input
+            clarification_search_results = await es_searcher.get_trials_by_text(
+                search_query,
+                top_k=5,
+                return_fields=["nct_id", "official_title", "brief_summary"],
+            )
+            if clarification_search_results:
+                search_results_section = "SEARCH RESULTS:\n"
+                for i, trial in enumerate(clarification_search_results, 1):
+                    nct_id = trial.get("nct_id", "N/A")
+                    title = trial.get("official_title", "N/A")
+                    brief_summary = trial.get("brief_summary", "N/A")
+                    search_results_section += f"{i}. {nct_id}: {title}\n   {brief_summary[:200]}...\n\n"
+                clarification_instructions = "Present the search results in a clear, numbered list and ask the user to provide the specific trial ID (NCT number) they want to summarize."
+                clarification_context = f"Found {len(clarification_search_results)} matching trials"
+            else:
+                clarification_instructions = (
+                    "Briefly explain that no trials were found and ask for a specific trial ID (NCT number)."
+                )
         else:
-            # Case 1: No search performed - user gave no information
-            clarification_instructions = "Briefly ask the user to provide a trial ID (format: NCT12345678) to summarize. Keep it short and friendly."
-    elif clarification_type == "patient_profile":
-        clarification_instructions = "Asks the user to provide patient information such as age, gender, medical condition, diagnosis, or current treatment status"
+            # No patient info and no trial ID - just ask for trial ID
+            clarification_instructions = (
+                "Ask the user to provide a trial ID (format: NCT12345678) to summarize. Keep it short and friendly."
+            )
     else:
-        clarification_instructions = (
-            "Asks the user to provide the missing information needed to proceed"
-        )
+        # Generic clarification - truly ambiguous or empty input
+        clarification_instructions = "Ask the user to provide more information to proceed with their request."
 
     # Create LLM instance for clarification
     clarify_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
@@ -440,12 +468,21 @@ async def clarify_node(state: GraphState) -> GraphState:
 
 def summarize_trial_node(state: GraphState) -> GraphState:
     """Node: Summarize specific clinical trial(s) by their IDs"""
+
     trial_ids = state.get("trial_ids", [])
     messages = state.get("messages", [])
     user_input = state.get("user_input", "")
 
+    # Extract NCT IDs using regex if not already in state
     if not trial_ids:
-        final_answer = "I couldn't find any trial IDs in your query. Please provide trial IDs in the format NCT12345678."
+        nct_pattern = r"NCT\d{8}"
+        trial_ids = re.findall(nct_pattern, user_input, re.IGNORECASE)
+        trial_ids = [tid.upper() for tid in trial_ids]  # Normalize to uppercase
+
+    if not trial_ids:
+        final_answer = (
+            "I couldn't find any trial IDs in your query. Please provide trial IDs in the format NCT12345678."
+        )
         updated_messages = list(messages) if messages else []
         updated_messages.append(AIMessage(content=final_answer))
         return {
@@ -462,8 +499,7 @@ def summarize_trial_node(state: GraphState) -> GraphState:
             trial_results.append(
                 {
                     "nct_id": trial_id,
-                    "title": source.get("brief_title")
-                    or source.get("official_title", "N/A"),
+                    "title": source.get("brief_title") or source.get("official_title", "N/A"),
                     "eligibility_criteria": source.get("eligibility_criteria", ""),
                     "brief_summary": source.get("brief_summary", ""),
                     "detailed_description": source.get("detailed_description", ""),
@@ -505,9 +541,7 @@ def summarize_trial_node(state: GraphState) -> GraphState:
             if trial.get("brief_summary"):
                 trials_text += f"Summary: {trial.get('brief_summary')}\n"
             if trial.get("detailed_description"):
-                trials_text += (
-                    f"Description: {trial.get('detailed_description')[:500]}...\n"
-                )
+                trials_text += f"Description: {trial.get('detailed_description')[:500]}...\n"
             if trial.get("eligibility_criteria"):
                 trials_text += f"Eligibility: {trial.get('eligibility_criteria')}...\n"
             if trial.get("primary_outcome") and trial.get("primary_outcome") != "N/A":
@@ -521,14 +555,10 @@ def summarize_trial_node(state: GraphState) -> GraphState:
 
     # Get conversation context
     context, context_instruction = get_conversation_context(state, max_messages=3)
-    conversation_context_section = (
-        f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
-    )
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
     # Create LLM to summarize the trial(s)
-    synthesis_llm = ChatOpenAI(
-        model=settings.llm_model, temperature=settings.temperature
-    )
+    synthesis_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     prompt = summarize_trial_prompt.format(
         user_input=user_input,
@@ -567,6 +597,7 @@ def create_workflow():
     workflow = StateGraph(GraphState)
 
     # Add nodes
+    workflow.add_node("intent_classification", intent_classification_node)
     workflow.add_node("reception", reception_node)
     workflow.add_node("clarify", clarify_node)
     workflow.add_node("search", search_clinical_trials_node)
@@ -575,19 +606,22 @@ def create_workflow():
     workflow.add_node("summarize_trial", summarize_trial_node)
 
     # Define edges with conditional routing
-    workflow.set_entry_point("reception")
+    workflow.set_entry_point("intent_classification")
 
-    # Reception routes to: clarify, summarize_trial, search, or chitchat
+    # Intent classification routes directly to appropriate nodes
     workflow.add_conditional_edges(
-        "reception",
-        route_query,
+        "intent_classification",
+        route_from_intent,
         {
-            "clarify": "clarify",
-            "summarize_trial": "summarize_trial",
+            "reception": "reception",
             "search": "search",
-            "chitchat_response": END,  # chitchat_response is handled in state
+            "summarize_trial": "summarize_trial",
+            "clarify": "clarify",
         },
     )
+
+    # Reception (greeting/off-topic) flow
+    workflow.add_edge("reception", END)
 
     # Clarification flow
     workflow.add_edge("clarify", END)

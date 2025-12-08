@@ -14,13 +14,12 @@ RESPONSE STRUCTURE:
    - If strong matches (≥0.70): Mention the count naturally
    - If weak matches: Be honest about limited options
 
-2. **Detail top 2 trials** in this format:
+2. **Detail top 1 trials** in this format:
 
 ### [Trial Title] (Phase [phase])
 **Match:** [score]% | **NCT:** [[nct_id]](https://clinicaltrials.gov/study/[nct_id])
 
 **Why it fits:** [Brief eligibility match explanation]
-**May need to confirm:** [Any borderline criteria]
 
 3. **Table for remaining trials** (if 3+ trials total):
 

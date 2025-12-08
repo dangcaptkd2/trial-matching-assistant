@@ -12,6 +12,7 @@ def _load_prompt(filename: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+intent_classification_prompt = _load_prompt("intent_classification_prompt.txt")
 rerank_prompt = _load_prompt("rerank_prompt.txt")
 synthesis_prompt = _load_prompt("synthesis_prompt.txt")
 reception_prompt = _load_prompt("reception_prompt.txt")
