@@ -3,22 +3,22 @@
 import asyncio
 import json
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph import StateGraph, END
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, StateGraph
 
-from src.core.state import GraphState
-from src.core.memory import get_checkpointer
-from src.services.search import ElasticsearchTrialSearcher
-from src.prompts.prompts import (
-    rerank_prompt,
-    synthesis_prompt,
-    reception_prompt,
-    summarize_trial_prompt,
-)
 from src.config.settings import settings
-
+from src.core.memory import get_checkpointer
+from src.core.state import GraphState
+from src.prompts.prompts import (
+    clarification_prompt,
+    reception_prompt,
+    rerank_prompt,
+    summarize_trial_prompt,
+    synthesis_prompt,
+)
+from src.services.search import ElasticsearchTrialSearcher
 
 # Initialize ES searcher
 es_searcher = ElasticsearchTrialSearcher(index_name=settings.es_index_name)
@@ -187,7 +187,7 @@ async def search_clinical_trials_node(state: GraphState) -> GraphState:
 
     # Directly call the async function - no need for event loop juggling!
     search_results = await es_searcher.get_trials_by_text(
-        search_text,
+        patient_profile=search_text,
         top_k=top_k,
         return_fields=[
             "eligibility_criteria",
@@ -198,17 +198,17 @@ async def search_clinical_trials_node(state: GraphState) -> GraphState:
     # Format results with eligibility criteria
     formatted_results = []
     for result in search_results:
-        source = result.get("source", {})
-        nct_id = source.get("nct_id") or source.get("id") or result.get("id", "N/A")
-        title = source.get("official_title")
-        eligibility = source.get("eligibility_criteria", "")
+        nct_id = result.get("nct_id") or result.get("id") or result.get("id", "N/A")
+        title = result.get("official_title")
+        eligibility = result.get("eligibility_criteria", "")
+        distance = result.get("distance", 0.0)
 
         formatted_results.append(
             {
                 "nct_id": nct_id,
                 "title": title,
                 "eligibility_criteria": eligibility,
-                "es_score": result.get("score", 0.0),
+                "es_score": distance,
             }
         )
     return {"search_results": formatted_results}
@@ -366,19 +366,16 @@ async def clarify_node(state: GraphState) -> GraphState:
     # Perform search if needed
     clarification_search_results = []
     if clarification_type == "trial_id" and trial_search_query:
-        try:
-            clarification_search_results = await es_searcher.get_trials_by_text(
-                trial_search_query,
-                top_k=5,
-                return_fields=["nct_id", "official_title", "brief_summary"],
-            )
-            if clarification_search_results:
-                clarification_context += f" I searched and found {len(clarification_search_results)} matching trials."
-            else:
-                clarification_context += f" I searched but found no matching trials for '{trial_search_query}'."
-        except Exception as e:
+        clarification_search_results = await es_searcher.get_trials_by_text(
+            trial_search_query,
+            top_k=5,
+            return_fields=["nct_id", "official_title", "brief_summary"],
+        )
+        if clarification_search_results:
+            clarification_context += f" I searched and found {len(clarification_search_results)} matching trials."
+        else:
             clarification_context += (
-                f" I encountered an error while searching: {str(e)}"
+                f" I searched but found no matching trials for '{trial_search_query}'."
             )
 
     # Format search results and instructions based on what information we have
@@ -410,8 +407,6 @@ async def clarify_node(state: GraphState) -> GraphState:
 
     # Create LLM instance for clarification
     clarify_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
-
-    from src.prompts.prompts import clarification_prompt
 
     prompt = clarification_prompt.format(
         user_input=user_input,

@@ -25,3 +25,25 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+fix = true
+
+[tool.ruff.lint]
+select = ["F", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+    "broad-exception-caught",
+    "logging-fstring-interpolation",
+]
+

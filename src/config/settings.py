@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # API Settings
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    streaming_enabled: bool = True  # Enable/disable streaming responses globally
+    streaming_enabled: bool = False  # Enable/disable streaming responses globally
 
     # Chainlit Settings
     chainlit_host: Optional[str] = None  # If None, uses FastAPI host
