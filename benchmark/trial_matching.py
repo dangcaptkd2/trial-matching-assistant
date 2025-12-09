@@ -43,7 +43,7 @@ def extract_trials_found(result: dict) -> list:
 
 def load_llm_judge_prompt() -> str:
     """Load the LLM judge prompt template."""
-    prompt_file = Path("benchmark/llm_judge_prompt.txt")
+    prompt_file = Path("benchmark/prompts/llm_judge_prompt.txt")
     return prompt_file.read_text(encoding="utf-8")
 
 
@@ -68,7 +68,7 @@ async def llm_evaluate_response(patient_profile: str, response: str, trials_foun
     )
 
     # Call LLM
-    llm = ChatOpenAI(model=settings.llm_model, temperature=0.0)
+    llm = ChatOpenAI(model=settings.llm_judge_model, temperature=0.0)
 
     try:
         response_msg = await llm.ainvoke([HumanMessage(content=prompt)])
@@ -173,7 +173,7 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
     # Load topics
     print(f"\nLoading topics from {topics_file}...")
     topics_data = get_topics_xml_file(topics_file)
-    topics = topics_data.get("topics", [])[:2]
+    topics = topics_data.get("topics", [])[:10]
 
     print(f"Found {len(topics)} topics to evaluate\n")
 
@@ -187,6 +187,24 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
         result = await run_single_topic(topic, workflow_service)
         results.append(result)
 
+    # Calculate average scores
+    llm_scored = [r for r in results if r.get("llm_scores", {}).get("hallucination") is not None]
+
+    average_scores = {}
+    if llm_scored:
+        avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
+        avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
+        avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+
+        average_scores = {
+            "overall": {
+                "hallucination": round(avg_h, 2),
+                "accuracy": round(avg_a, 2),
+                "clarity": round(avg_c, 2),
+                "total_scored": len(llm_scored),
+            }
+        }
+
     # Save results
     output_dir = Path("benchmark/results")
     output_dir.mkdir(exist_ok=True)
@@ -198,6 +216,7 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
         "topics_file": topics_file,
         "total_topics": len(topics),
         "results": results,
+        "average_scores": average_scores,
     }
 
     with open(output_file, "w", encoding="utf-8") as f:

@@ -12,25 +12,17 @@ class GraphState(TypedDict):
     messages: list[BaseMessage]  # Conversation history
 
     # Intent classification fields
-    intent_type: str  # Intent: GREETING, OFF_TOPIC, FIND_TRIALS, SUMMARIZE_TRIAL, NEEDS_CLARIFICATION
-    has_patient_info: bool  # Whether patient information is provided
-    has_trial_id: bool  # Whether trial ID(s) are provided
+    intent_type: (
+        str  # Intent: GREETING, OFF_TOPIC, FIND_TRIALS, SUMMARIZE_TRIAL, CHECK_ELIGIBILITY, NEEDS_CLARIFICATION
+    )
+    patient_info: str  # Extracted patient information (string or None)
+    trial_ids: list  # List of extracted trial IDs (e.g., ["NCT12345678"] or None)
     clarification_reason: str  # Minimal context for clarification node
 
-    # Legacy query_type for backward compatibility
-    query_type: str  # Query classification: CHITCHAT, FIND_TRIALS, SUMMARIZE_TRIAL, CLARIFY
-
     # Trial and search fields
-    trial_ids: list  # List of trial IDs to summarize (e.g., ["NCT12345678"])
+    trial_data: list  # Fetched trial documents from Elasticsearch (list of dicts)
     trial_search_query: str  # Search query for finding trials (used in CLARIFY for trial_id)
-    search_query: str  # Improved search query for ES (FIND_TRIALS)
-    patient_profile: str  # Extracted/improved patient profile
     chitchat_response: str  # Response for non-trial questions
-
-    # Clarification fields (legacy)
-    clarification_type: str  # Type: "trial_id", "patient_profile", etc.
-    clarification_context: str  # Context about what user asked for
-    clarification_search_results: list  # Search results if applicable
 
     # Search and results fields
     search_results: list  # Results from ES search

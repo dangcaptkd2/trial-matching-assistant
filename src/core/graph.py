@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import re
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -13,6 +12,7 @@ from src.config.settings import settings
 from src.core.memory import get_checkpointer
 from src.core.state import GraphState
 from src.prompts.prompts import (
+    check_eligibility_prompt,
     clarification_prompt,
     intent_classification_prompt,
     reception_prompt,
@@ -100,8 +100,8 @@ def intent_classification_node(state: GraphState) -> GraphState:
     if not user_input:
         return {
             "intent_type": "NEEDS_CLARIFICATION",
-            "has_patient_info": False,
-            "has_trial_id": False,
+            "patient_info": None,
+            "trial_ids": None,
             "clarification_reason": "empty input",
         }
 
@@ -142,16 +142,28 @@ def intent_classification_node(state: GraphState) -> GraphState:
     updated_messages = list(messages) if messages else []
     updated_messages.append(HumanMessage(content=user_input))
 
-    # Return LLM's decisions directly (no rule-based logic)
+    # Extract data from LLM response
+    patient_info = result.get("patient_info")
+    trial_ids = result.get("trial_ids")
+
+    # Normalize: convert null to None, ensure trial_ids is list or None
+    if patient_info is None or patient_info == "":
+        patient_info = None
+    if trial_ids is None:
+        trial_ids = None
+    elif isinstance(trial_ids, list):
+        # Normalize trial IDs to uppercase
+        trial_ids = [tid.upper() if isinstance(tid, str) else tid for tid in trial_ids if tid]
+        if not trial_ids:
+            trial_ids = None
+
+    # Return LLM's extracted data
     return {
         "messages": updated_messages,
         "intent_type": result.get("intent_type", "NEEDS_CLARIFICATION"),
-        "has_patient_info": result.get("has_patient_info", False),
-        "has_trial_id": result.get("has_trial_id", False),
+        "patient_info": patient_info,
+        "trial_ids": trial_ids,
         "clarification_reason": result.get("clarification_reason", ""),
-        # Pass user input for later use (for search and extraction)
-        "patient_profile": user_input if result.get("has_patient_info") else "",
-        "search_query": user_input if result.get("has_patient_info") else "",
     }
 
 
@@ -207,24 +219,39 @@ def route_from_intent(state: GraphState) -> str:
         # Always search - intent type means they have patient info
         return "search"
     elif intent_type == "SUMMARIZE_TRIAL":
-        # Always summarize - intent type means they have trial ID
-        return "summarize_trial"
+        # Fetch trial data first, then summarize
+        return "fetch_trial_data"
+    elif intent_type == "CHECK_ELIGIBILITY":
+        # Fetch trial data first, then check eligibility
+        return "fetch_trial_data"
     else:  # NEEDS_CLARIFICATION
         return "clarify"
 
 
+def route_after_fetch(state: GraphState) -> str:
+    """Route after fetching trial data based on intent type"""
+    intent_type = state.get("intent_type", "")
+
+    if intent_type == "SUMMARIZE_TRIAL":
+        return "summarize_trial"
+    elif intent_type == "CHECK_ELIGIBILITY":
+        return "check_eligibility"
+    else:
+        # Should never happen - fetch_trial_data only runs for SUMMARIZE/CHECK_ELIGIBILITY
+        return "summarize_trial"  # Safe fallback
+
+
 async def search_clinical_trials_node(state: GraphState) -> GraphState:
     """Node: Search clinical trials using Elasticsearch"""
-    query = state.get("search_query", "")
-    patient_profile = state.get("patient_profile", "")
+    patient_info = state.get("patient_info", "")
     top_k = state.get("top_k", 10)
 
-    # Use patient_profile if available, otherwise use search_query
-    search_text = patient_profile if patient_profile else query
+    if not patient_info:
+        return {"search_results": []}
 
     # Directly call the async function - no need for event loop juggling!
     search_results = await es_searcher.get_trials_by_text(
-        patient_profile=search_text,
+        patient_profile=patient_info,
         top_k=top_k,
         return_fields=[
             "eligibility_criteria",
@@ -254,7 +281,7 @@ async def search_clinical_trials_node(state: GraphState) -> GraphState:
 async def rerank_with_llm_node(state: GraphState) -> GraphState:
     """Node: Rerank search results using LLM as cross-encoder"""
     search_results = state.get("search_results", [])
-    patient_profile = state.get("patient_profile", "")
+    patient_info = state.get("patient_info", "")
 
     if not search_results:
         return {"reranked_results": []}
@@ -272,7 +299,7 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
                 "match_reasoning": "No eligibility criteria available",
             }
 
-        prompt = rerank_prompt.format(patient_profile=patient_profile, eligibility=eligibility)
+        prompt = rerank_prompt.format(patient_profile=patient_info, eligibility=eligibility)
 
         config = RunnableConfig(
             metadata={"node": "rerank_with_llm", "operation": "trial_scoring"},
@@ -321,7 +348,7 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
 def synthesize_answer_node(state: GraphState) -> GraphState:
     """Node: Synthesize reranked results into a natural language answer"""
     reranked_results = state.get("reranked_results", [])
-    patient_profile = state.get("patient_profile", "")
+    patient_info = state.get("patient_info", "")
     messages = state.get("messages", [])
 
     if not reranked_results:
@@ -350,7 +377,7 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     synthesis_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     prompt = synthesis_prompt.format(
-        patient_profile=patient_profile,
+        patient_profile=patient_info,
         reranked_trials=trials_text,
         conversation_context=conversation_context_section,
         context_instruction=context_instruction,
@@ -381,8 +408,12 @@ async def clarify_node(state: GraphState) -> GraphState:
     user_input = state.get("user_input", "")
     messages = state.get("messages", [])
     clarification_reason = state.get("clarification_reason", "")
-    has_patient_info = state.get("has_patient_info", False)
-    has_trial_id = state.get("has_trial_id", False)
+    patient_info = state.get("patient_info")
+    trial_ids = state.get("trial_ids", [])
+
+    # Check if info is available
+    has_patient_info = patient_info is not None and patient_info != ""
+    has_trial_id = trial_ids is not None and len(trial_ids) > 0
 
     # Get conversation context
     context, context_instruction = get_conversation_context(state, max_messages=3)
@@ -397,6 +428,7 @@ async def clarify_node(state: GraphState) -> GraphState:
     reason_lower = clarification_reason.lower()
     wants_find_trials = "find" in reason_lower or "search" in reason_lower
     wants_summarize = "summary" in reason_lower or "summarize" in reason_lower
+    wants_check_eligibility = "eligible" in reason_lower or "eligibility" in reason_lower or "qualify" in reason_lower
 
     if wants_find_trials and not has_patient_info:
         # User wants to find trials but no patient information provided
@@ -429,6 +461,15 @@ async def clarify_node(state: GraphState) -> GraphState:
             clarification_instructions = (
                 "Ask the user to provide a trial ID (format: NCT12345678) to summarize. Keep it short and friendly."
             )
+    elif wants_check_eligibility:
+        if not has_patient_info and not has_trial_id:
+            clarification_instructions = "Ask for BOTH patient information (age, condition) AND the specific trial ID (NCT number) to check eligibility."
+        elif not has_patient_info:
+            clarification_instructions = (
+                "Ask for patient information (age, condition, diagnosis) to check eligibility for the specific trial."
+            )
+        elif not has_trial_id:
+            clarification_instructions = "Ask for the specific trial ID (NCT number) to check eligibility against."
     else:
         # Generic clarification - truly ambiguous or empty input
         clarification_instructions = "Ask the user to provide more information to proceed with their request."
@@ -466,28 +507,13 @@ async def clarify_node(state: GraphState) -> GraphState:
     }
 
 
-def summarize_trial_node(state: GraphState) -> GraphState:
-    """Node: Summarize specific clinical trial(s) by their IDs"""
-
+def fetch_trial_data_node(state: GraphState) -> GraphState:
+    """Node: Fetch trial documents from Elasticsearch by IDs"""
     trial_ids = state.get("trial_ids", [])
-    messages = state.get("messages", [])
-    user_input = state.get("user_input", "")
-
-    # Extract NCT IDs using regex if not already in state
-    if not trial_ids:
-        nct_pattern = r"NCT\d{8}"
-        trial_ids = re.findall(nct_pattern, user_input, re.IGNORECASE)
-        trial_ids = [tid.upper() for tid in trial_ids]  # Normalize to uppercase
 
     if not trial_ids:
-        final_answer = (
-            "I couldn't find any trial IDs in your query. Please provide trial IDs in the format NCT12345678."
-        )
-        updated_messages = list(messages) if messages else []
-        updated_messages.append(AIMessage(content=final_answer))
         return {
-            "final_answer": final_answer,
-            "messages": updated_messages,
+            "trial_data": [],
         }
 
     # Fetch trials from Elasticsearch by ID
@@ -519,7 +545,16 @@ def summarize_trial_node(state: GraphState) -> GraphState:
                 }
             )
 
-    if not trial_results or all("error" in trial for trial in trial_results):
+    return {"trial_data": trial_results}
+
+
+def summarize_trial_node(state: GraphState) -> GraphState:
+    """Node: Summarize specific clinical trial(s) by their IDs"""
+    trial_data = state.get("trial_data", [])
+    messages = state.get("messages", [])
+    user_input = state.get("user_input", "")
+
+    if not trial_data or all("error" in trial for trial in trial_data):
         final_answer = "I couldn't find information about the requested trial(s)."
         updated_messages = list(messages) if messages else []
         updated_messages.append(AIMessage(content=final_answer))
@@ -530,7 +565,7 @@ def summarize_trial_node(state: GraphState) -> GraphState:
 
     # Format trial information for summarization
     trials_text = ""
-    for trial in trial_results:
+    for trial in trial_data:
         if "error" in trial:
             trials_text += f"\n- {trial['nct_id']}: {trial['error']}\n"
         else:
@@ -588,6 +623,74 @@ def summarize_trial_node(state: GraphState) -> GraphState:
     }
 
 
+async def check_eligibility_node(state: GraphState) -> GraphState:
+    """Node: Check if a patient is eligible for a specific trial"""
+    trial_data = state.get("trial_data", [])
+    patient_info = state.get("patient_info", "")
+    messages = state.get("messages", [])
+
+    if not trial_data:
+        final_answer = (
+            "I couldn't find trial information to check eligibility. Please provide a trial ID (e.g., NCT12345678)."
+        )
+        updated_messages = list(messages) if messages else []
+        updated_messages.append(AIMessage(content=final_answer))
+        return {
+            "final_answer": final_answer,
+            "messages": updated_messages,
+        }
+
+    # Check eligibility for the first trial (focus on primary request)
+    trial = trial_data[0]
+
+    if "error" in trial:
+        final_answer = (
+            f"I couldn't find details for trial {trial.get('nct_id', 'N/A')}. {trial.get('error', 'Trial not found')}"
+        )
+        updated_messages = list(messages) if messages else []
+        updated_messages.append(AIMessage(content=final_answer))
+        return {
+            "final_answer": final_answer,
+            "messages": updated_messages,
+        }
+
+    target_trial_id = trial.get("nct_id", "N/A")
+    eligibility_criteria = trial.get("eligibility_criteria", "Not available")
+
+    # Get conversation context
+    context, context_instruction = get_conversation_context(state, max_messages=3)
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
+
+    # Create LLM instance
+    check_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+
+    prompt = check_eligibility_prompt.format(
+        conversation_context=conversation_context_section,
+        patient_profile=patient_info,
+        trial_id=target_trial_id,
+        eligibility_criteria=eligibility_criteria,
+        context_instruction=context_instruction,
+    )
+
+    config = RunnableConfig(
+        metadata={"node": "check_eligibility", "operation": "eligibility_check"},
+        tags=["eligibility", "analysis"],
+        run_name="check_eligibility",
+    )
+
+    response = check_llm.invoke([HumanMessage(content=prompt)], config=config)
+    final_answer = response.content.strip()
+
+    # Update messages
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(AIMessage(content=final_answer))
+
+    return {
+        "final_answer": final_answer,
+        "messages": updated_messages,
+    }
+
+
 def create_workflow():
     """Create and compile the LangGraph workflow.
 
@@ -600,6 +703,8 @@ def create_workflow():
     workflow.add_node("intent_classification", intent_classification_node)
     workflow.add_node("reception", reception_node)
     workflow.add_node("clarify", clarify_node)
+    workflow.add_node("fetch_trial_data", fetch_trial_data_node)
+    workflow.add_node("check_eligibility", check_eligibility_node)
     workflow.add_node("search", search_clinical_trials_node)
     workflow.add_node("rerank", rerank_with_llm_node)
     workflow.add_node("synthesize", synthesize_answer_node)
@@ -608,14 +713,14 @@ def create_workflow():
     # Define edges with conditional routing
     workflow.set_entry_point("intent_classification")
 
-    # Intent classification routes directly to appropriate nodes
+    # Intent classification routes to appropriate nodes
     workflow.add_conditional_edges(
         "intent_classification",
         route_from_intent,
         {
             "reception": "reception",
             "search": "search",
-            "summarize_trial": "summarize_trial",
+            "fetch_trial_data": "fetch_trial_data",
             "clarify": "clarify",
         },
     )
@@ -626,8 +731,21 @@ def create_workflow():
     # Clarification flow
     workflow.add_edge("clarify", END)
 
+    # Fetch trial data routes to summarize or check eligibility (always has required info)
+    workflow.add_conditional_edges(
+        "fetch_trial_data",
+        route_after_fetch,
+        {
+            "summarize_trial": "summarize_trial",
+            "check_eligibility": "check_eligibility",
+        },
+    )
+
     # Trial summarization flow
     workflow.add_edge("summarize_trial", END)
+
+    # Eligibility check flow
+    workflow.add_edge("check_eligibility", END)
 
     # Find trials flow (patient matching)
     workflow.add_edge("search", "rerank")

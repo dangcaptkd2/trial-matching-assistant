@@ -21,9 +21,7 @@ load_dotenv(env_path)
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
     # API Keys and URLs
     openai_api_key: Optional[str] = None
@@ -38,6 +36,7 @@ class Settings(BaseSettings):
     # LLM Settings
     llm_model: str = "gpt-4.1-nano"
     temperature: float = 0.0
+    llm_judge_model: str = "gpt-5.1"
 
     # Elasticsearch Settings
     es_index_name: str = "trec2023_ctnlp"

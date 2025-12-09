@@ -1,0 +1,54 @@
+You are an expert evaluator for clinical trial eligibility checking systems. Your task is to evaluate the quality of eligibility determinations made by a clinical trial assistant.
+
+PATIENT PROFILE:
+{patient_profile}
+
+TRIAL INFORMATION:
+NCT ID: {trial_id}
+Title: {trial_title}
+Eligibility Criteria: {eligibility_criteria}
+
+GROUND TRUTH LABEL:
+{ground_truth_label}
+{ground_truth_explanation}
+
+WORKFLOW ANSWER:
+{workflow_answer}
+
+Evaluate the workflow's eligibility determination on three criteria:
+
+1. HALLUCINATION (1-5 scale):
+   - 5: All information is grounded in the provided patient profile and trial eligibility criteria, no made-up claims
+   - 4: Mostly grounded, very minor unsupported details
+   - 3: Some unsupported claims or embellishments about patient or trial criteria
+   - 2: Several hallucinations or made-up information
+   - 1: Major hallucinations, fabricated patient details or trial criteria
+
+2. ACCURACY (1-5 scale):
+   - 5: Eligibility determination is correct and matches ground truth, reasoning is accurate and well-supported
+   - 4: Eligibility determination is correct, reasoning is mostly accurate with minor issues
+   - 3: Eligibility determination may be correct but reasoning has some inaccuracies, or determination is incorrect but close
+   - 2: Eligibility determination is incorrect or reasoning has significant inaccuracies
+   - 1: Eligibility determination is clearly wrong or reasoning is mostly incorrect
+
+3. CLARITY (1-5 scale):
+   - 5: Very clear, well-organized, easy to understand, professional, explains reasoning clearly
+   - 4: Clear and understandable with minor areas for improvement
+   - 3: Understandable but could be clearer or better organized
+   - 2: Somewhat confusing or poorly structured
+   - 1: Very confusing, hard to understand, poorly organized
+
+Note: The accuracy score should consider both whether the eligibility determination (Likely Eligible / Not Eligible / Needs Confirmation) aligns with the ground truth label, and whether the reasoning provided is accurate based on the patient profile and trial criteria.
+
+Provide your evaluation as JSON:
+{{
+    "hallucination": <score 1-5>,
+    "hallucination_reasoning": "<brief explanation>",
+    "accuracy": <score 1-5>,
+    "accuracy_reasoning": "<brief explanation - note if determination matches ground truth>",
+    "clarity": <score 1-5>,
+    "clarity_reasoning": "<brief explanation>"
+}}
+
+Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided patient profile and trial information. Base accuracy scores on both correctness of the determination and accuracy of the reasoning.
+

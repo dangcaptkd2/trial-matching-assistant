@@ -1,34 +1,154 @@
 {
-  "timestamp": "2025-12-08T17:28:28.738989",
-  "total_trials": 2,
+  "timestamp": "2025-12-09T19:22:58.953677",
+  "total_trials": 10,
   "results": [
     {
       "trial_id": "NCT02132585",
       "query": "Summarize NCT02132585",
-      "response": "- This study investigates the use of speckle tracking echocardiography (STE) to detect early heart dysfunction in patients with Sjogren Syndrome.  \n- It is a preliminary, cross-sectional study with no specified phase or current status.  \n- Participants must have Sjogren Syndrome and no history of heart problems like heart failure, stroke, or previous cardiovascular events.  \n- The goal is to see if STE can help identify heart issues early in these patients.",
-      "execution_time": 2.917739,
+      "response": "- This study investigates the use of speckle tracking echocardiography (STE) to detect early heart dysfunction in patients with Sjogren Syndrome.  \n- It is a preliminary, cross-sectional study with no specified phase or current status.  \n- Participants must have Sjogren Syndrome and no history of heart problems like heart failure, stroke, or previous cardiovascular events.  \n- The goal is to see if STE can identify heart issues early in these patients.",
+      "execution_time": 3.514124,
       "llm_scores": {
-        "hallucination": 2,
-        "hallucination_reasoning": "The summary claims the study is 'preliminary' and 'cross-sectional,' but without access to the actual trial data, it's unclear if these descriptors are accurate. The mention of no specified phase or current status may be unsupported or incomplete, indicating some potential inaccuracies.",
+        "hallucination": 4,
+        "hallucination_reasoning": "Most elements are grounded in the record: it is an echocardiographic study in Sjogren’s patients using speckle tracking to detect subclinical cardiac dysfunction and is cross-sectional/preliminary. However, the statement that participants must have no history of any cardiovascular events (e.g., stroke, prior events) is stricter than the posted criteria, which focus on the absence of manifest heart disease and significant structural abnormalities rather than all prior cardiovascular events.",
         "accuracy": 3,
-        "accuracy_reasoning": "The summary captures the main objective and methodology (using STE to detect early heart dysfunction in Sjogren Syndrome patients) and mentions key eligibility criteria. However, it omits details such as sample size, specific outcomes measured, or trial endpoints, which are important for full accuracy.",
-        "clarity": 4,
-        "clarity_reasoning": "The summary is clear, concise, and well-organized, effectively conveying the study's purpose, design, and population in four bullet points. Slight improvements could be made for even greater clarity, but overall it is understandable and professional."
+        "accuracy_reasoning": "The summary correctly notes the population (Sjogren’s syndrome patients), the use of speckle tracking echocardiography, and the aim of detecting early cardiac dysfunction in a preliminary cross‑sectional design. It omits key aspects: the presence of a healthy control group, the fact that the primary endpoint is specific STE parameters (e.g., global longitudinal strain) and conventional echo measures, and that there are more detailed inclusion/exclusion conditions. It also overstates the exclusion of all prior cardiovascular events, which is not fully supported.",
+        "clarity": 5,
+        "clarity_reasoning": "The summary is concise, well-structured as bullet points, uses clear language, and stays within the 4–5 sentence/bullet guideline, making the study’s purpose and general design easy to understand."
       }
     },
     {
       "trial_id": "NCT03341637",
       "query": "Summarize NCT03341637",
-      "response": "The NCT03341637 trial studied the safety and immune response of a tetravalent dengue vaccine (TDV) in healthy adolescents aged 12-17 in non-endemic areas. The study involved 400 participants who received two doses of the vaccine or a placebo. The main goal was to see if the vaccine produced neutralizing antibodies against dengue. The trial's status and phase are not specified. Participants needed to be healthy, not pregnant, and have no recent other vaccinations or flavivirus infections.",
-      "execution_time": 2.244666,
+      "response": "This clinical trial studied the safety and immune response of a tetravalent dengue vaccine (TDV) in healthy adolescents aged 12-17 years in non-endemic areas. The study involved 400 participants who received two doses of the vaccine or a placebo. The main goal was to see if the vaccine produced neutralizing antibodies against dengue. The trial's status and phase are not specified. Participants needed to be healthy, not pregnant, and have no recent other vaccinations or flavivirus infections.",
+      "execution_time": 3.279062,
+      "llm_scores": {
+        "hallucination": 2,
+        "hallucination_reasoning": "The summary introduces several incorrect or unsupported details: it states a target enrollment of 400 participants (actual enrollment was 120), describes the population as from non-endemic areas (the trial was conducted in dengue-endemic regions such as the Philippines), and implies a simple two-dose vaccine-or-placebo design (the actual design included different dosing schedules and formulations). It also omits that this is a Phase 2, double-blind, randomized, placebo-controlled trial, and incorrectly says the phase and status are not specified even though they are reported.",
+        "accuracy": 2,
+        "accuracy_reasoning": "While the summary correctly identifies that this is a tetravalent dengue vaccine given to healthy adolescents and that neutralizing antibody response and safety are important objectives, it misstates sample size, geography (endemic vs non-endemic), and oversimplifies the study design. It also fails to mention key aspects such as phase, randomized double-blind controlled design, and detailed primary endpoints (safety and immunogenicity at specified timepoints). These errors and omissions materially affect overall accuracy.",
+        "clarity": 4,
+        "clarity_reasoning": "The summary is generally clear, concise, and easy to understand, with a logical flow of ideas and appropriate language for a lay audience. It fits within the 4–5 sentence requirement. However, some statements are vague (e.g., 'trial's status and phase are not specified') and a bit more precision could improve clarity further."
+      }
+    },
+    {
+      "trial_id": "NCT00480792",
+      "query": "Summarize NCT00480792",
+      "response": "This clinical trial compares three different hepatitis B vaccination strategies in HIV-infected patients with a CD4 count above 200. The goal is to see which method best protects against hepatitis B in these patients. The study involves giving different doses and methods of the vaccine, including intramuscular and intradermal injections. Participants must be HIV-positive, not previously vaccinated for hepatitis B, and meet other health criteria. The trial aims to improve hepatitis B vaccination effectiveness in people with HIV.",
+      "execution_time": 3.315934,
       "llm_scores": {
         "hallucination": 4,
-        "hallucination_reasoning": "The summary is mostly accurate and grounded in typical trial data, with no obvious fabricated details. However, it omits the trial phase and status, which are often specified in official records, indicating minor unsupported details.",
+        "hallucination_reasoning": "Core elements are correct: HIV-infected adults, CD4 count >200, comparison of different hepatitis B vaccination regimens including intradermal and intramuscular routes, and focus on improving vaccine response. However, it slightly overgeneralizes some inclusion criteria (e.g., stating simply “not previously vaccinated for hepatitis B” without mentioning nuances like prior non-response or serostatus) and does not specify exact dosing schedules, though it does not clearly fabricate them.",
         "accuracy": 4,
-        "accuracy_reasoning": "The summary correctly describes the study population, intervention, primary goal, and key eligibility criteria. It accurately reflects the trial's focus on safety and immune response in adolescents receiving a dengue vaccine. Some specifics, such as the trial phase and detailed outcomes, are missing but do not significantly detract from overall accuracy.",
+        "accuracy_reasoning": "The summary captures the main objective (compare three vaccination strategies to improve HBV protection in people with HIV), core population (HIV-positive with CD4 >200), route differences (intramuscular vs intradermal), and broad eligibility concept. It omits key details such as age limits, specific outcome measures (e.g., seroconversion/anti-HBs titers), exact dosage schemes, and some exclusion criteria but does not materially misrepresent the trial.",
+        "clarity": 5,
+        "clarity_reasoning": "The summary is concise (4 sentences), well-structured, and easy to understand, with a clear statement of purpose, design, and target population in professional language."
+      }
+    },
+    {
+      "trial_id": "NCT01079793",
+      "query": "Summarize NCT01079793",
+      "response": "This clinical trial studies the safety and best dose of the drug ixabepilone combined with radiation therapy for patients with high-risk stage III prostate cancer after surgery. It is a phase I/II trial, focusing on side effects and how well the treatment works. Eligible patients have had prostate surgery within the past 2 years, with specific cancer characteristics and good overall health. The study aims to find the safest dose and assess treatment effectiveness, but current status details are not provided.",
+      "execution_time": 3.649419,
+      "llm_scores": {
+        "hallucination": 2,
+        "hallucination_reasoning": "The trial is actually a phase I dose-escalation study of pre‑operative (neoadjuvant) ixabepilone plus radiation prior to prostatectomy in high‑risk localized prostate cancer, not post‑surgery treatment. The summary incorrectly states it is for patients after surgery and calls it a phase I/II trial. It also implies specific time‑since‑surgery and overall health criteria that are not clearly specified as such in the registry.",
+        "accuracy": 2,
+        "accuracy_reasoning": "While it correctly mentions ixabepilone with radiation, high‑risk prostate cancer, and a dose‑finding/safety focus, it misstates the trial phase (phase I only, not phase I/II), misplaces the treatment timing (pre‑operative rather than after surgery), and mischaracterizes the patient population as post‑prostatectomy. It also omits that it is neoadjuvant therapy before radical prostatectomy and gives vague or partially incorrect eligibility details.",
         "clarity": 4,
-        "clarity_reasoning": "The summary is clear, concise, and well-organized, effectively conveying the main points in four sentences. Slight improvements could be made for even greater clarity or completeness, but it is generally understandable and professional."
+        "clarity_reasoning": "The summary is concise, 4 sentences, and generally easy to understand with a logical flow. However, some wording is vague (e.g., “current status details are not provided”) and the description of eligibility is non‑specific, leaving room for misunderstanding despite overall readable structure."
+      }
+    },
+    {
+      "trial_id": "NCT01670110",
+      "query": "Summarize NCT01670110",
+      "response": "The trial NCT01670110 is studying the use of pasireotide (SOM230) to treat severe polycystic liver disease, aiming to see if it can reduce liver size and improve quality of life. It is a randomized, double-blind, placebo-controlled study, but its current status and phase are not specified. Eligible participants are adults with large, symptomatic liver cysts who are not candidates for surgery and have no serious liver or heart conditions. The study involves monitoring safety and effectiveness of pasireotide over time.",
+      "execution_time": 3.57093,
+      "llm_scores": {
+        "hallucination": 3,
+        "hallucination_reasoning": "The trial is indeed about pasireotide in severe polycystic liver disease and is randomized, double-blind, and placebo-controlled, and safety/effectiveness are monitored. However, the summary invents specific eligibility details not supported by the record (e.g., “large, symptomatic liver cysts,” “not candidates for surgery,” and excluding “serious liver or heart conditions”) and claims that phase and status are not specified when they are available in the registry.",
+        "accuracy": 3,
+        "accuracy_reasoning": "The main objective (pasireotide to reduce liver volume and improve patient outcomes in severe PLD) and study design (randomized, double-blind, placebo-controlled) are broadly correct, but key inaccuracies and omissions lower the score. The trial phase and recruitment status are misrepresented as unspecified, and key inclusion and exclusion criteria are described in a generic, partly incorrect way. Important details such as specific endpoints, dosing, and time frame are not captured.",
+        "clarity": 4,
+        "clarity_reasoning": "The summary is concise, within the 4–5 sentence requirement, and generally easy to understand with a logical flow (objective, design, population, and monitoring). Minor vagueness about status/phase and overly generic eligibility phrasing slightly reduce clarity but overall it is well organized and readable."
+      }
+    },
+    {
+      "trial_id": "NCT00966875",
+      "query": "Summarize NCT00966875",
+      "response": "- This study investigates the safety and potential effectiveness of a drug called LY2439821 in patients with active Rheumatoid Arthritis (RA).  \n- It is a Phase 2, multicenter trial with two parts: one testing different doses and another optional extension.  \n- Participants include adults aged 18-75 with RA, either new to biologic treatments or previously treated with TNFα inhibitors.  \n- The trial aims to determine the right dose and monitor side effects, but specific location and timeline details are not provided.",
+      "execution_time": 2.806365,
+      "llm_scores": {
+        "hallucination": 3,
+        "hallucination_reasoning": "Mixed accuracy: the drug name and Phase 2 RA context are correct, but the trial is not clearly described as two sequential parts with an 'optional extension'; the split is between two independent protocol parts (A and B). The stated age range of 18–75 is not supported in the registry (which specifies 18 years and older with no upper age limit). The claim about including patients 'new to biologic treatments' vs 'previously treated with TNFα inhibitors' is not explicitly reflected as such in the registry for this specific trial design.",
+        "accuracy": 3,
+        "accuracy_reasoning": "The summary correctly notes that this is a Phase 2 multicenter study of LY2439821 in active rheumatoid arthritis and that dosing and safety are key aims. However, it omits important details (e.g., randomized, double-blind, placebo-controlled design; concomitant methotrexate; primary endpoints such as ACR responses and safety measures) and adds partially incorrect structure (two parts framed as dose-finding plus optional extension) and an unsupported specific age cap. Overall, it captures some core ideas but misses and misstates several key design and eligibility details.",
+        "clarity": 4,
+        "clarity_reasoning": "The bullet points are concise, well-structured, and easy to understand, and the length is appropriate. Some phrasing about the trial having 'two parts' and the characterization of the populations could be clearer or more precise, but overall readability is good."
+      }
+    },
+    {
+      "trial_id": "NCT03087305",
+      "query": "Summarize NCT03087305",
+      "response": "- This study investigates how often supraclavicular lymph node (SCLN) metastasis occurs in patients suspected of having primary lung cancer.  \n- It uses ultrasound to evaluate non-palpable SCLNs in patients referred for EBUS-TBNA, a procedure to check lymph node involvement.  \n- The trial does not specify a phase or current status.  \n- Eligible participants are adults aged 20 or older who are suspected of having lung cancer and are referred for EBUS-TBNA.  \n- The goal is to improve detection of metastasis and guide better treatment decisions.",
+      "execution_time": 3.045767,
+      "llm_scores": {
+        "hallucination": 5,
+        "hallucination_reasoning": "All key statements (focus on SCLN metastasis in suspected lung cancer, use of ultrasound in non-palpable SCLNs, referral for EBUS-TBNA, adult population, and overall intent to improve detection/treatment guidance) are consistent with the trial record and do not introduce unsupported specifics.",
+        "accuracy": 4,
+        "accuracy_reasoning": "The summary correctly captures the main objective, imaging method, population, and context (patients referred for EBUS-TBNA). However, it omits that the primary outcome is the *prevalence* of SCLN metastases specifically in this cohort, and does not mention that SCLN ultrasound is being evaluated as a staging tool before EBUS-TBNA, nor the diagnostic performance metrics, so some key nuances of methodology and outcomes are missing.",
+        "clarity": 5,
+        "clarity_reasoning": "Information is concise, well-structured in bullets, and easy to understand; it fits within the 4–5 bullet guideline and uses clear clinical language appropriate for a professional audience."
+      }
+    },
+    {
+      "trial_id": "NCT04888793",
+      "query": "Summarize NCT04888793",
+      "response": "- This study evaluates the immune response to the Coronavac COVID-19 vaccine in immunocompromised patients, including those with cancer, HIV, organ transplants, and rheumatic diseases.  \n- The trial does not specify a phase or current status.  \n- Participants must have received two doses of Coronavac and not have had a prior COVID-19 infection.  \n- The study aims to understand how well these vulnerable groups develop immunity after vaccination.",
+      "execution_time": 3.111999,
+      "llm_scores": {
+        "hallucination": 3,
+        "hallucination_reasoning": "Some elements are supported (focus on Coronavac, immunocompromised groups including cancer, HIV, transplant, rheumatic diseases; evaluation of immune response). However, there are likely hallucinations/overstatements: the trial includes a comparator group of healthy controls, which is not mentioned; it is not accurate to say participants 'must' have received two doses as an eligibility criterion (vaccination status is part of study design/timing rather than a strict pre-enrollment requirement in the way phrased); and the statement that the trial does not specify a phase or status is speculative and not grounded in the protocol. The claim about no prior COVID-19 infection may also be more restrictive than the actual inclusion/exclusion structure.",
+        "accuracy": 3,
+        "accuracy_reasoning": "The summary captures the general objective (assessing immune response to Coronavac in immunocompromised patients) and main populations correctly, but omits key aspects (presence of a control/healthy group, specific immunologic and safety endpoints, and study design details). It also frames certain details inaccurately as hard eligibility criteria (two doses received, no prior COVID-19 infection) and makes a potentially incorrect statement about unspecified phase/status. Overall it mixes correct high-level aims with several inaccuracies and important omissions.",
+        "clarity": 5,
+        "clarity_reasoning": "The summary is concise, well-structured in bullet points, and easy to understand. It is within the 4–5 bullet requirement and uses clear, non-technical language appropriate for a general reader."
+      }
+    },
+    {
+      "trial_id": "NCT01815333",
+      "query": "Summarize NCT01815333",
+      "response": "- This study investigates whether the drug Feraheme® (ferumoxytole) can help doctors better see cancerous lymph nodes on MRI scans and explore its use in liver imaging.  \n- The trial does not specify a phase or current status.  \n- Participants must have suspicious lymph nodes or need a tissue diagnosis, be at least 18 years old, and have no iron overload or allergies to Feraheme®.  \n- The study involves undergoing up to three MRI scans, with the drug given through a vein.  \n- It is conducted at MD Anderson Cancer Center and aims to improve imaging techniques for cancer diagnosis.",
+      "execution_time": 3.41423,
+      "llm_scores": {
+        "hallucination": 4,
+        "hallucination_reasoning": "Most points are grounded: it is an MRI study of ferumoxytol (Feraheme) to improve lymph node and liver imaging, in adults, with multiple MRIs and IV drug administration at MD Anderson. However, there are some minor unsubstantiated specifics: the requirement that participants must have 'suspicious lymph nodes or need a tissue diagnosis' is more specific than the posted broad solid tumor inclusion, and the exclusion phrasing about 'no allergies to Feraheme' generalizes safety criteria.",
+        "accuracy": 3,
+        "accuracy_reasoning": "The summary captures the general aim (ferumoxytol MRI contrast for nodal and liver imaging), adult population, IV administration, and multiple MRIs, and notes single-center conduct. It omits important details (e.g., that this is an imaging/diagnostic study in patients with solid tumors, specific primary outcomes like sensitivity/specificity of nodal staging, and that certain organ function and comorbidity criteria apply). It also introduces somewhat inaccurate specificity around having suspicious lymph nodes/needing tissue diagnosis and slightly mischaracterizes the objective as broadly improving cancer diagnosis rather than validating diagnostic performance metrics.",
+        "clarity": 5,
+        "clarity_reasoning": "The summary is concise, well-structured as bullet points, easy to follow, and uses lay-friendly language. It stays within the 4–5 bullet requirement and presents the main ideas clearly and professionally."
+      }
+    },
+    {
+      "trial_id": "NCT00399217",
+      "query": "Summarize NCT00399217",
+      "response": "- This study tests a new subcutaneous implantable defibrillator (S-ICD) system to see if it can safely detect and stop dangerous heart rhythms during surgery.  \n- The trial does not specify a phase or current status.  \n- It includes patients who need an implantable cardioverter defibrillator (ICD) or need to replace an existing one.  \n- Key criteria: patients must be able to give consent, not pregnant, and not have certain medical conditions or other device trials.  \n- The procedure involves briefly testing the S-ICD system during a standard ICD implantation, then removing it.",
+      "execution_time": 2.814592,
+      "llm_scores": {
+        "hallucination": 4,
+        "hallucination_reasoning": "Most elements match the trial: it evaluates an S-ICD system for detecting/terminating ventricular arrhythmias, includes patients indicated for new or replacement ICDs, and involves intraoperative testing during a standard ICD implant with subsequent S-ICD removal. However, stating the trial \"does not specify\" phase/status is not supported—this is post-market/feasibility-type device work and not framed as a phase trial, and the registry does specify a recruitment status. The summary also simplifies exclusion criteria (e.g., pregnancy and other device trials are not explicitly listed as such in the record).",
+        "accuracy": 4,
+        "accuracy_reasoning": "The core purpose (safety/ability of the S-ICD to detect and treat ventricular arrhythmias), population (patients needing ICD implantation or generator replacement), and procedure (temporary intraoperative S-ICD system that is removed) are accurately conveyed. It omits trial design details (e.g., prospective, non-randomized, specific arrhythmia induction protocol, and defined endpoints like sensitivity/specificity) and compresses inclusion/exclusion criteria, but there are no major misstatements about trial objectives or methods.",
+        "clarity": 5,
+        "clarity_reasoning": "The summary is concise, well organized into bullet points, uses clear language, and stays within the 4–5 sentence guideline. It communicates the trial’s aim, population, key criteria, and procedure in an accessible and professional manner."
       }
     }
-  ]
+  ],
+  "average_scores": {
+    "overall": {
+      "hallucination": 3.4,
+      "accuracy": 3.1,
+      "clarity": 4.6,
+      "total_scored": 10
+    }
+  }
 }

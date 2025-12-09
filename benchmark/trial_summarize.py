@@ -65,7 +65,7 @@ TRIAL_IDS = [
     "NCT00485602",
     "NCT05146674",
 ]
-TRIAL_IDS = TRIAL_IDS[:2]
+TRIAL_IDS = TRIAL_IDS[:10]
 
 
 def format_response(result: dict) -> str:
@@ -80,7 +80,7 @@ def format_response(result: dict) -> str:
 
 def load_llm_judge_prompt() -> str:
     """Load the LLM judge prompt template for summarization."""
-    prompt_file = Path("benchmark/llm_judge_summarize_prompt.txt")
+    prompt_file = Path("benchmark/prompts/llm_judge_summarize_prompt.txt")
     return prompt_file.read_text(encoding="utf-8")
 
 
@@ -91,7 +91,7 @@ async def llm_evaluate_summarization(trial_id: str, response: str) -> dict:
     prompt = prompt_template.format(trial_id=trial_id, response=response)
 
     # Call LLM
-    llm = ChatOpenAI(model=settings.llm_model, temperature=0.0)
+    llm = ChatOpenAI(model=settings.llm_judge_model, temperature=0.0)
 
     try:
         response_msg = await llm.ainvoke([HumanMessage(content=prompt)])
@@ -205,6 +205,24 @@ async def run_evaluation():
         result = await run_single_trial(trial_id, workflow_service)
         results.append(result)
 
+    # Calculate average scores
+    llm_scored = [r for r in results if r.get("llm_scores", {}).get("hallucination") is not None]
+
+    average_scores = {}
+    if llm_scored:
+        avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
+        avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
+        avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+
+        average_scores = {
+            "overall": {
+                "hallucination": round(avg_h, 2),
+                "accuracy": round(avg_a, 2),
+                "clarity": round(avg_c, 2),
+                "total_scored": len(llm_scored),
+            }
+        }
+
     # Save results
     output_dir = Path("benchmark/results")
     output_dir.mkdir(exist_ok=True)
@@ -215,6 +233,7 @@ async def run_evaluation():
         "timestamp": datetime.now().isoformat(),
         "total_trials": len(TRIAL_IDS),
         "results": results,
+        "average_scores": average_scores,
     }
 
     with open(output_file, "w", encoding="utf-8") as f:

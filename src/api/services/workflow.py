@@ -74,9 +74,7 @@ class WorkflowService:
                 "data": result,
             }
 
-    async def _stream_workflow(
-        self, initial_state: Dict, config: Dict
-    ) -> AsyncIterator[Dict]:
+    async def _stream_workflow(self, initial_state: Dict, config: Dict) -> AsyncIterator[Dict]:
         """
         Stream workflow execution steps.
 
@@ -109,9 +107,7 @@ class WorkflowService:
                 step_start = step_times.get(node_name, datetime.now())
 
                 # Check if we already have a step for this node
-                existing_step = next(
-                    (s for s in execution_steps if s.node_name == node_name), None
-                )
+                existing_step = next((s for s in execution_steps if s.node_name == node_name), None)
 
                 if not existing_step:
                     # Create new step
@@ -126,9 +122,7 @@ class WorkflowService:
                     # Update existing step
                     existing_step.status = "started"
                     if not existing_step.input_summary:
-                        existing_step.input_summary = self._summarize_state(
-                            node_output, "input"
-                        )
+                        existing_step.input_summary = self._summarize_state(node_output, "input")
 
                 # Yield step start event
                 yield {
@@ -192,14 +186,18 @@ class WorkflowService:
 
     def _determine_response_type(self, result: Dict) -> str:
         """Determine the type of response."""
-        query_type = result.get("query_type", "")
+        intent_type = result.get("intent_type", "")
 
-        if query_type == "CLARIFY" or result.get("chitchat_response"):
+        if result.get("chitchat_response"):
             return "chitchat"
-        elif query_type == "SUMMARIZE_TRIAL":
+        elif intent_type == "SUMMARIZE_TRIAL":
             return "trial_summary"
-        elif query_type == "FIND_TRIALS":
+        elif intent_type == "FIND_TRIALS":
             return "trial_search"
+        elif intent_type == "CHECK_ELIGIBILITY":
+            return "eligibility_check"
+        elif intent_type in ["GREETING", "OFF_TOPIC", "NEEDS_CLARIFICATION"]:
+            return "chitchat"
         elif result.get("final_answer"):
             return "trial_search"
         return "unknown"
