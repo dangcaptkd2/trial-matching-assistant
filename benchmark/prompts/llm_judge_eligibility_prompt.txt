@@ -15,23 +15,23 @@ GROUND TRUTH LABEL:
 WORKFLOW ANSWER:
 {workflow_answer}
 
-Evaluate the workflow's eligibility determination on three criteria:
+Evaluate the workflow's eligibility determination on three criteria (1-5 scale, where 5 is BEST and 1 is WORST):
 
-1. HALLUCINATION (1-5 scale):
+1. HALLUCINATION (1-5 scale, 5=BEST, 1=WORST):
    - 5: All information is grounded in the provided patient profile and trial eligibility criteria, no made-up claims
    - 4: Mostly grounded, very minor unsupported details
    - 3: Some unsupported claims or embellishments about patient or trial criteria
    - 2: Several hallucinations or made-up information
    - 1: Major hallucinations, fabricated patient details or trial criteria
 
-2. ACCURACY (1-5 scale):
+2. ACCURACY (1-5 scale, 5=BEST, 1=WORST):
    - 5: Eligibility determination is correct and matches ground truth, reasoning is accurate and well-supported
    - 4: Eligibility determination is correct, reasoning is mostly accurate with minor issues
    - 3: Eligibility determination may be correct but reasoning has some inaccuracies, or determination is incorrect but close
    - 2: Eligibility determination is incorrect or reasoning has significant inaccuracies
    - 1: Eligibility determination is clearly wrong or reasoning is mostly incorrect
 
-3. CLARITY (1-5 scale):
+3. CLARITY (1-5 scale, 5=BEST, 1=WORST):
    - 5: Very clear, well-organized, easy to understand, professional, explains reasoning clearly
    - 4: Clear and understandable with minor areas for improvement
    - 3: Understandable but could be clearer or better organized
@@ -42,13 +42,15 @@ Note: The accuracy score should consider both whether the eligibility determinat
 
 Provide your evaluation as JSON:
 {{
-    "hallucination": <score 1-5>,
+    "hallucination": <score 1-5, where 5 is BEST (no hallucinations) and 1 is WORST (major hallucinations)>,
     "hallucination_reasoning": "<brief explanation>",
-    "accuracy": <score 1-5>,
+    "accuracy": <score 1-5, where 5 is BEST (correct and matches ground truth) and 1 is WORST (clearly wrong)>,
     "accuracy_reasoning": "<brief explanation - note if determination matches ground truth>",
-    "clarity": <score 1-5>,
+    "clarity": <score 1-5, where 5 is BEST (very clear) and 1 is WORST (very confusing)>,
     "clarity_reasoning": "<brief explanation>"
 }}
+
+CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the determination has no hallucinations, score hallucination as 5. If it's correct and matches ground truth, score accuracy as 5. If it's very clear, score clarity as 5.
 
 Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided patient profile and trial information. Base accuracy scores on both correctness of the determination and accuracy of the reasoning.
 

@@ -8,15 +8,18 @@ INTENT TYPES:
 - FIND_TRIALS: User wants to find trials AND has provided patient information (age, gender, condition, symptoms, diagnosis)
 - SUMMARIZE_TRIAL: User wants to summarize a specific trial AND has provided trial ID or enough information to identify a trial
 - CHECK_ELIGIBILITY: User wants to check eligibility for a specific trial AND has provided patient information
+- EXPLAIN_CRITERIA: User wants to explain eligibility criteria in simple words AND has provided trial ID
 - NEEDS_CLARIFICATION: User wants to do something but hasn't provided enough information, OR cannot determine intent
 
 IMPORTANT: 
 - Only use FIND_TRIALS if patient information is provided
 - Only use SUMMARIZE_TRIAL if trial identification information is provided
 - Only use CHECK_ELIGIBILITY if BOTH patient information and trial ID are provided
+- Only use EXPLAIN_CRITERIA if trial identification information is provided
 - If user wants to find trials but provides no patient info → NEEDS_CLARIFICATION
 - If user wants to summarize but provides no trial info → NEEDS_CLARIFICATION
 - If user wants to check eligibility but misses patient info or trial ID → NEEDS_CLARIFICATION
+- If user wants to explain criteria but provides no trial info → NEEDS_CLARIFICATION
 
 EXTRACTION:
 - patient_info: Extract ALL patient information as a single string (age, gender, condition, symptoms, diagnosis, treatment). Return null if no patient info provided.
@@ -30,7 +33,7 @@ USER INPUT: {user_input}
 
 Respond with JSON:
 {{
-    "intent_type": "<GREETING | OFF_TOPIC | FIND_TRIALS | SUMMARIZE_TRIAL | CHECK_ELIGIBILITY | NEEDS_CLARIFICATION>",
+    "intent_type": "<GREETING | OFF_TOPIC | FIND_TRIALS | SUMMARIZE_TRIAL | CHECK_ELIGIBILITY | EXPLAIN_CRITERIA | NEEDS_CLARIFICATION>",
     "patient_info": "<extracted patient information string or null>",
     "trial_ids": [<list of extracted trial IDs like ['NCT12345678'] or null>],
     "clarification_reason": "<brief reason if NEEDS_CLARIFICATION, else ''>"
@@ -46,4 +49,6 @@ EXAMPLES:
 - "Tell me about that breast cancer trial" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "wants trial summary but no trial ID provided"}}
 - "Am I eligible for NCT12345678? I have stage 3 lung cancer" → {{"intent_type": "CHECK_ELIGIBILITY", "patient_info": "stage 3 lung cancer", "trial_ids": ["NCT12345678"], "clarification_reason": ""}}
 - "Check eligibility for NCT12345678" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": ["NCT12345678"], "clarification_reason": "wants eligibility check but no patient info provided"}}
+- "Explain the eligibility rules for NCT12345678 in simple English" → {{"intent_type": "EXPLAIN_CRITERIA", "patient_info": null, "trial_ids": ["NCT12345678"], "clarification_reason": ""}}
+- "What are the inclusion and exclusion criteria for this trial?" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "wants to explain criteria but no trial ID provided"}}
 - "" (empty input) → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "empty input"}}

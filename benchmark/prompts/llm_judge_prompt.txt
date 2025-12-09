@@ -9,23 +9,23 @@ TRIALS FOUND (Top matches with reasoning):
 SYSTEM RESPONSE:
 {response}
 
-Evaluate the response on three criteria:
+Evaluate the response on three criteria (1-5 scale, where 5 is BEST and 1 is WORST):
 
-1. HALLUCINATION (1-5 scale):
+1. HALLUCINATION (1-5 scale, 5=BEST, 1=WORST):
    - 5: All information is grounded in the trial data, no made-up claims
    - 4: Mostly grounded, very minor unsupported details
    - 3: Some unsupported claims or embellishments
    - 2: Several hallucinations or made-up information
    - 1: Major hallucinations, fabricated trial details
 
-2. ACCURACY (1-5 scale):
+2. ACCURACY (1-5 scale, 5=BEST, 1=WORST):
    - 5: All trials are highly relevant and perfectly match patient criteria
    - 4: Most trials are highly relevant, minor mismatches
    - 3: Mix of relevant and less relevant trials
    - 2: Many trials don't match well
    - 1: Trials are mostly irrelevant to patient profile
 
-3. CLARITY (1-5 scale):
+3. CLARITY (1-5 scale, 5=BEST, 1=WORST):
    - 5: Very clear, well-organized, easy to understand, professional
    - 4: Clear and understandable with minor areas for improvement
    - 3: Understandable but could be clearer or better organized
@@ -34,13 +34,15 @@ Evaluate the response on three criteria:
 
 Provide your evaluation as JSON:
 {{
-    "hallucination": <score 1-5>,
+    "hallucination": <score 1-5, where 5 is BEST (no hallucinations) and 1 is WORST (major hallucinations)>,
     "hallucination_reasoning": "<brief explanation>",
-    "accuracy": <score 1-5>,
+    "accuracy": <score 1-5, where 5 is BEST (perfectly relevant) and 1 is WORST (mostly irrelevant)>,
     "accuracy_reasoning": "<brief explanation>",
-    "clarity": <score 1-5>,
+    "clarity": <score 1-5, where 5 is BEST (very clear) and 1 is WORST (very confusing)>,
     "clarity_reasoning": "<brief explanation>"
 }}
+
+CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the response has no hallucinations, score hallucination as 5. If all trials are highly relevant, score accuracy as 5. If it's very clear, score clarity as 5.
 
 Be objective and critical. Base hallucination scores strictly on whether claims are supported by the trial data provided.
 

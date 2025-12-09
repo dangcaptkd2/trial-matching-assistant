@@ -196,6 +196,8 @@ class WorkflowService:
             return "trial_search"
         elif intent_type == "CHECK_ELIGIBILITY":
             return "eligibility_check"
+        elif intent_type == "EXPLAIN_CRITERIA":
+            return "criteria_explanation"
         elif intent_type in ["GREETING", "OFF_TOPIC", "NEEDS_CLARIFICATION"]:
             return "chitchat"
         elif result.get("final_answer"):

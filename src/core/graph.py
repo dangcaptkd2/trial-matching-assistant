@@ -14,6 +14,7 @@ from src.core.state import GraphState
 from src.prompts.prompts import (
     check_eligibility_prompt,
     clarification_prompt,
+    explain_criteria_prompt,
     intent_classification_prompt,
     reception_prompt,
     rerank_prompt,
@@ -224,6 +225,9 @@ def route_from_intent(state: GraphState) -> str:
     elif intent_type == "CHECK_ELIGIBILITY":
         # Fetch trial data first, then check eligibility
         return "fetch_trial_data"
+    elif intent_type == "EXPLAIN_CRITERIA":
+        # Fetch trial data first, then explain criteria
+        return "fetch_trial_data"
     else:  # NEEDS_CLARIFICATION
         return "clarify"
 
@@ -236,8 +240,10 @@ def route_after_fetch(state: GraphState) -> str:
         return "summarize_trial"
     elif intent_type == "CHECK_ELIGIBILITY":
         return "check_eligibility"
+    elif intent_type == "EXPLAIN_CRITERIA":
+        return "explain_criteria"
     else:
-        # Should never happen - fetch_trial_data only runs for SUMMARIZE/CHECK_ELIGIBILITY
+        # Should never happen - fetch_trial_data only runs for SUMMARIZE/CHECK_ELIGIBILITY/EXPLAIN_CRITERIA
         return "summarize_trial"  # Safe fallback
 
 
@@ -429,6 +435,13 @@ async def clarify_node(state: GraphState) -> GraphState:
     wants_find_trials = "find" in reason_lower or "search" in reason_lower
     wants_summarize = "summary" in reason_lower or "summarize" in reason_lower
     wants_check_eligibility = "eligible" in reason_lower or "eligibility" in reason_lower or "qualify" in reason_lower
+    wants_explain_criteria = (
+        "explain" in reason_lower
+        or "criteria" in reason_lower
+        or "eligibility rules" in reason_lower
+        or "inclusion" in reason_lower
+        or "exclusion" in reason_lower
+    )
 
     if wants_find_trials and not has_patient_info:
         # User wants to find trials but no patient information provided
@@ -470,6 +483,9 @@ async def clarify_node(state: GraphState) -> GraphState:
             )
         elif not has_trial_id:
             clarification_instructions = "Ask for the specific trial ID (NCT number) to check eligibility against."
+    elif wants_explain_criteria and not has_trial_id:
+        # User wants to explain criteria but no trial ID provided - just ask for trial ID
+        clarification_instructions = "Ask the user to provide a trial ID (format: NCT12345678) to explain the eligibility criteria. Keep it short and friendly."
     else:
         # Generic clarification - truly ambiguous or empty input
         clarification_instructions = "Ask the user to provide more information to proceed with their request."
@@ -691,6 +707,76 @@ async def check_eligibility_node(state: GraphState) -> GraphState:
     }
 
 
+def explain_criteria_node(state: GraphState) -> GraphState:
+    """Node: Explain eligibility criteria in simple, everyday language"""
+    trial_data = state.get("trial_data", [])
+    messages = state.get("messages", [])
+    user_input = state.get("user_input", "")
+
+    if not trial_data or all("error" in trial for trial in trial_data):
+        final_answer = "I couldn't find information about the requested trial(s). Please provide a valid trial ID (e.g., NCT12345678)."
+        updated_messages = list(messages) if messages else []
+        updated_messages.append(AIMessage(content=final_answer))
+        return {
+            "final_answer": final_answer,
+            "messages": updated_messages,
+        }
+
+    # Get conversation context
+    context, context_instruction = get_conversation_context(state, max_messages=3)
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
+
+    # Create LLM instance
+    explain_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+
+    # Process each trial separately
+    explanations = []
+    for trial in trial_data:
+        if "error" in trial:
+            explanations.append(f"\n**Trial {trial.get('nct_id', 'N/A')}:** {trial.get('error', 'Trial not found')}\n")
+            continue
+
+        trial_id = trial.get("nct_id", "N/A")
+        trial_title = trial.get("title", "N/A")
+        eligibility_criteria = trial.get("eligibility_criteria", "Not available")
+
+        prompt = explain_criteria_prompt.format(
+            conversation_context=conversation_context_section,
+            trial_id=trial_id,
+            trial_title=trial_title,
+            eligibility_criteria=eligibility_criteria,
+            context_instruction=context_instruction,
+            user_input=user_input,
+        )
+
+        config = RunnableConfig(
+            metadata={"node": "explain_criteria", "operation": "criteria_explanation"},
+            tags=["criteria-explanation", "answer-generation"],
+            run_name="explain_criteria",
+        )
+
+        response = explain_llm.invoke([HumanMessage(content=prompt)], config=config)
+        explanation = response.content.strip()
+
+        # Add trial header if multiple trials
+        if len(trial_data) > 1:
+            explanations.append(f"\n## {trial_title} ({trial_id})\n\n{explanation}\n")
+        else:
+            explanations.append(explanation)
+
+    # Combine explanations
+    final_answer = "\n".join(explanations)
+
+    # Update messages with final answer
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(AIMessage(content=final_answer))
+
+    return {
+        "final_answer": final_answer,
+        "messages": updated_messages,
+    }
+
+
 def create_workflow():
     """Create and compile the LangGraph workflow.
 
@@ -705,6 +791,7 @@ def create_workflow():
     workflow.add_node("clarify", clarify_node)
     workflow.add_node("fetch_trial_data", fetch_trial_data_node)
     workflow.add_node("check_eligibility", check_eligibility_node)
+    workflow.add_node("explain_criteria", explain_criteria_node)
     workflow.add_node("search", search_clinical_trials_node)
     workflow.add_node("rerank", rerank_with_llm_node)
     workflow.add_node("synthesize", synthesize_answer_node)
@@ -731,13 +818,14 @@ def create_workflow():
     # Clarification flow
     workflow.add_edge("clarify", END)
 
-    # Fetch trial data routes to summarize or check eligibility (always has required info)
+    # Fetch trial data routes to summarize, check eligibility, or explain criteria (always has required info)
     workflow.add_conditional_edges(
         "fetch_trial_data",
         route_after_fetch,
         {
             "summarize_trial": "summarize_trial",
             "check_eligibility": "check_eligibility",
+            "explain_criteria": "explain_criteria",
         },
     )
 
@@ -746,6 +834,9 @@ def create_workflow():
 
     # Eligibility check flow
     workflow.add_edge("check_eligibility", END)
+
+    # Explain criteria flow
+    workflow.add_edge("explain_criteria", END)
 
     # Find trials flow (patient matching)
     workflow.add_edge("search", "rerank")
