@@ -196,7 +196,7 @@ def parse_qrels_file(qrels_path: str) -> Dict[Tuple[str, str], int]:
                 parts = line.split()
                 if len(parts) >= 4:
                     topic_number = parts[0]
-                    iteration = parts[1]  # Usually "0", not used
+                    _ = parts[1]  # Usually "0", not used
                     trial_id = parts[2]
                     label = int(parts[3])
 
@@ -249,6 +249,56 @@ def sample_qrels_by_label(
         sampled = random.sample(available, count)
         for topic_number, trial_id in sampled:
             samples.append((topic_number, trial_id, label))
+
+    return samples
+
+
+def sample_trials_for_comparison(
+    qrels: Dict[Tuple[str, str], int], num_topics: int = 50, min_trials: int = 2, max_trials: int = 3, seed: int = 42
+) -> List[Tuple[str, List[str]]]:
+    """
+    Sample topics and get 2-3 trials with label 2 (Eligible) from each topic for comparison.
+
+    Args:
+        qrels: Dictionary mapping (topic_number, trial_id) to label
+        num_topics: Number of topics to sample
+        min_trials: Minimum number of trials per topic (default 2)
+        max_trials: Maximum number of trials per topic (default 3)
+        seed: Random seed for reproducibility
+
+    Returns:
+        List of tuples: [(topic_number, [trial_id1, trial_id2, ...]), ...]
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    # Group qrels by topic, then filter for label 2
+    by_topic: Dict[str, List[str]] = {}
+    for (topic_number, trial_id), label in qrels.items():
+        if label == 2:  # Only eligible trials
+            if topic_number not in by_topic:
+                by_topic[topic_number] = []
+            by_topic[topic_number].append(trial_id)
+
+    # Filter topics that have at least min_trials eligible trials
+    valid_topics = {topic: trials for topic, trials in by_topic.items() if len(trials) >= min_trials}
+
+    if len(valid_topics) < num_topics:
+        print(
+            f"Warning: Only {len(valid_topics)} topics have at least {min_trials} eligible trials, requested {num_topics}"
+        )
+        num_topics = len(valid_topics)
+
+    # Randomly sample topics
+    sampled_topics = random.sample(list(valid_topics.keys()), num_topics)
+
+    # For each topic, randomly sample 2-3 trials
+    samples = []
+    for topic_number in sampled_topics:
+        trials = valid_topics[topic_number]
+        num_to_sample = min(random.randint(min_trials, max_trials), len(trials))
+        sampled_trials = random.sample(trials, num_to_sample)
+        samples.append((topic_number, sampled_trials))
 
     return samples
 

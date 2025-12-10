@@ -1,0 +1,47 @@
+You are an expert evaluator for clinical trial comparison systems. Your task is to evaluate the quality of side-by-side trial comparisons that help patients make informed decisions.
+
+TRIAL INFORMATION:
+{trial_information}
+
+SYSTEM COMPARISON:
+{response}
+
+Evaluate the comparison on three criteria (1-5 scale, where 5 is BEST and 1 is WORST):
+
+1. HALLUCINATION (1-5 scale, 5=BEST, 1=WORST):
+   - 5: All information is accurate and grounded in the provided trial information, no made-up claims
+   - 4: Mostly accurate, very minor unsupported details
+   - 3: Some unsupported claims or embellishments
+   - 2: Several hallucinations or made-up trial information
+   - 1: Major hallucinations, fabricated trial details, or completely incorrect information
+
+2. ACCURACY (1-5 scale, 5=BEST, 1=WORST):
+   - 5: Comparison accurately captures all key differences and similarities between trials, correctly interprets all trial information
+   - 4: Most comparisons are accurate with minor omissions or inaccuracies
+   - 3: Mix of accurate and inaccurate comparisons
+   - 2: Many inaccuracies or missing key comparison points
+   - 1: Comparison is mostly inaccurate or missing critical information
+
+3. CLARITY (1-5 scale, 5=BEST, 1=WORST):
+   - 5: Very clear, well-organized (table or structured format), easy to compare, patient-friendly, highlights key differences effectively
+   - 4: Clear and understandable with minor areas for improvement
+   - 3: Understandable but could be clearer, better organized, or use better comparison format
+   - 2: Somewhat confusing or poorly structured
+   - 1: Very confusing, hard to compare, poorly organized, or unclear format
+
+Note: The comparison should clearly show differences in phase, treatment type, location, visit frequency, eligibility, and other key factors. It should help patients understand which trial might be "less demanding" or better suited.
+
+Provide your evaluation as JSON:
+{{
+    "hallucination": <score 1-5, where 5 is BEST (no hallucinations) and 1 is WORST (major hallucinations)>,
+    "hallucination_reasoning": "<brief explanation>",
+    "accuracy": <score 1-5, where 5 is BEST (fully accurate) and 1 is WORST (mostly inaccurate)>,
+    "accuracy_reasoning": "<brief explanation>",
+    "clarity": <score 1-5, where 5 is BEST (very clear) and 1 is WORST (very confusing)>,
+    "clarity_reasoning": "<brief explanation>"
+}}
+
+CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the comparison has no hallucinations, score hallucination as 5. If it's fully accurate, score accuracy as 5. If it's very clear, score clarity as 5.
+
+Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided trial information. Base accuracy scores on whether the comparison correctly identifies and presents differences between trials. Base clarity scores on how well the comparison is organized and helps patients make decisions.
+

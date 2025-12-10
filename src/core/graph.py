@@ -14,12 +14,14 @@ from src.core.state import GraphState
 from src.prompts.prompts import (
     check_eligibility_prompt,
     clarification_prompt,
+    compare_trials_prompt,
     explain_criteria_prompt,
     intent_classification_prompt,
     reception_prompt,
     rerank_prompt,
     summarize_trial_prompt,
     synthesis_prompt,
+    translate_terms_prompt,
 )
 from src.services.search import ElasticsearchTrialSearcher
 
@@ -210,12 +212,55 @@ def reception_node(state: GraphState) -> GraphState:
     }
 
 
+def translate_terms_node(state: GraphState) -> GraphState:
+    """Node: Translate medical terms - Explain medical jargon in simple language"""
+    user_input = state.get("user_input", "")
+    messages = state.get("messages", [])
+
+    # Get conversation context
+    context, context_instruction = get_conversation_context(state, max_messages=3)
+
+    # Create LLM instance
+    translate_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+
+    # Format prompt with context
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
+
+    prompt = translate_terms_prompt.format(
+        user_input=user_input,
+        conversation_context=conversation_context_section,
+        context_instruction=context_instruction,
+    )
+
+    # Use config to identify this node in LangSmith
+    config = RunnableConfig(
+        metadata={"node": "translate_terms"},
+        tags=["translate_terms", "term_explanation"],
+        run_name="translate_terms",
+    )
+
+    response = translate_llm.invoke([HumanMessage(content=prompt)], config=config)
+    final_answer = response.content.strip()
+
+    # Update messages with assistant response
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(AIMessage(content=final_answer))
+
+    return {
+        "messages": updated_messages,
+        "final_answer": final_answer,
+    }
+
+
 def route_from_intent(state: GraphState) -> str:
     """Conditional edge function: route based on intent type"""
     intent_type = state.get("intent_type", "NEEDS_CLARIFICATION")
 
     if intent_type == "GREETING" or intent_type == "OFF_TOPIC":
         return "reception"
+    elif intent_type == "TRANSLATE_TERMS":
+        # Translate medical terms - no data needed
+        return "translate_terms"
     elif intent_type == "FIND_TRIALS":
         # Always search - intent type means they have patient info
         return "search"
@@ -227,6 +272,9 @@ def route_from_intent(state: GraphState) -> str:
         return "fetch_trial_data"
     elif intent_type == "EXPLAIN_CRITERIA":
         # Fetch trial data first, then explain criteria
+        return "fetch_trial_data"
+    elif intent_type == "COMPARE_TRIALS":
+        # Fetch trial data first, then compare
         return "fetch_trial_data"
     else:  # NEEDS_CLARIFICATION
         return "clarify"
@@ -242,8 +290,10 @@ def route_after_fetch(state: GraphState) -> str:
         return "check_eligibility"
     elif intent_type == "EXPLAIN_CRITERIA":
         return "explain_criteria"
+    elif intent_type == "COMPARE_TRIALS":
+        return "compare_trials"
     else:
-        # Should never happen - fetch_trial_data only runs for SUMMARIZE/CHECK_ELIGIBILITY/EXPLAIN_CRITERIA
+        # Should never happen - fetch_trial_data only runs for SUMMARIZE/CHECK_ELIGIBILITY/EXPLAIN_CRITERIA/COMPARE_TRIALS
         return "summarize_trial"  # Safe fallback
 
 
@@ -442,6 +492,7 @@ async def clarify_node(state: GraphState) -> GraphState:
         or "inclusion" in reason_lower
         or "exclusion" in reason_lower
     )
+    wants_compare = "compare" in reason_lower or "comparison" in reason_lower
 
     if wants_find_trials and not has_patient_info:
         # User wants to find trials but no patient information provided
@@ -486,6 +537,12 @@ async def clarify_node(state: GraphState) -> GraphState:
     elif wants_explain_criteria and not has_trial_id:
         # User wants to explain criteria but no trial ID provided - just ask for trial ID
         clarification_instructions = "Ask the user to provide a trial ID (format: NCT12345678) to explain the eligibility criteria. Keep it short and friendly."
+    elif wants_compare:
+        # User wants to compare trials
+        if not has_trial_id:
+            clarification_instructions = "Ask the user to provide at least 2 trial IDs (format: NCT12345678) to compare. Keep it short and friendly."
+        elif len(trial_ids) < 2:
+            clarification_instructions = f"Ask the user to provide at least one more trial ID (currently have {len(trial_ids)}). Need at least 2 trials to compare. Keep it short and friendly."
     else:
         # Generic clarification - truly ambiguous or empty input
         clarification_instructions = "Ask the user to provide more information to proceed with their request."
@@ -777,6 +834,89 @@ def explain_criteria_node(state: GraphState) -> GraphState:
     }
 
 
+def compare_trials_node(state: GraphState) -> GraphState:
+    """Node: Compare 2 or more clinical trials side by side"""
+    trial_data = state.get("trial_data", [])
+    messages = state.get("messages", [])
+    user_input = state.get("user_input", "")
+
+    if not trial_data or all("error" in trial for trial in trial_data):
+        final_answer = "I couldn't find information about the requested trials for comparison. Please provide valid trial IDs (e.g., NCT12345678)."
+        updated_messages = list(messages) if messages else []
+        updated_messages.append(AIMessage(content=final_answer))
+        return {
+            "final_answer": final_answer,
+            "messages": updated_messages,
+        }
+
+    # Check if we have at least 2 valid trials
+    valid_trials = [t for t in trial_data if "error" not in t]
+    if len(valid_trials) < 2:
+        final_answer = "I need at least 2 valid trials to compare. Please provide 2 or more trial IDs."
+        updated_messages = list(messages) if messages else []
+        updated_messages.append(AIMessage(content=final_answer))
+        return {
+            "final_answer": final_answer,
+            "messages": updated_messages,
+        }
+
+    # Format trial information for comparison
+    trials_text = ""
+    for trial in trial_data:
+        if "error" in trial:
+            trials_text += f"\n- {trial['nct_id']}: {trial['error']}\n"
+        else:
+            trials_text += f"\nTrial ID: {trial.get('nct_id', 'N/A')}\n"
+            trials_text += f"Title: {trial.get('title', 'N/A')}\n"
+            trials_text += f"Phase: {trial.get('phase', 'N/A')}\n"
+            trials_text += f"Status: {trial.get('status', 'N/A')}\n"
+            if trial.get("brief_summary"):
+                trials_text += f"Summary: {trial.get('brief_summary')}\n"
+            if trial.get("detailed_description"):
+                trials_text += f"Description: {trial.get('detailed_description')[:500]}...\n"
+            if trial.get("eligibility_criteria"):
+                trials_text += f"Eligibility: {trial.get('eligibility_criteria')}\n"
+            if trial.get("primary_outcome") and trial.get("primary_outcome") != "N/A":
+                trials_text += f"Primary Outcome: {trial.get('primary_outcome')}\n"
+            if trial.get("start_date") and trial.get("start_date") != "N/A":
+                trials_text += f"Start Date: {trial.get('start_date')}\n"
+            if trial.get("completion_date") and trial.get("completion_date") != "N/A":
+                trials_text += f"Completion Date: {trial.get('completion_date')}\n"
+            if trial.get("locations") and trial.get("locations") != "N/A":
+                trials_text += f"Locations: {trial.get('locations')}\n"
+
+    # Get conversation context
+    context, context_instruction = get_conversation_context(state, max_messages=3)
+    conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
+
+    # Create LLM to compare the trials
+    compare_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+
+    prompt = compare_trials_prompt.format(
+        user_input=user_input,
+        trial_information=trials_text,
+        conversation_context=conversation_context_section,
+        context_instruction=context_instruction,
+    )
+
+    config = RunnableConfig(
+        metadata={"node": "compare_trials", "operation": "trial_comparison"},
+        tags=["trial-comparison", "answer-generation"],
+        run_name="compare_trials",
+    )
+    response = compare_llm.invoke([HumanMessage(content=prompt)], config=config)
+    final_answer = response.content.strip()
+
+    # Update messages with final answer
+    updated_messages = list(messages) if messages else []
+    updated_messages.append(AIMessage(content=final_answer))
+
+    return {
+        "final_answer": final_answer,
+        "messages": updated_messages,
+    }
+
+
 def create_workflow():
     """Create and compile the LangGraph workflow.
 
@@ -788,10 +928,12 @@ def create_workflow():
     # Add nodes
     workflow.add_node("intent_classification", intent_classification_node)
     workflow.add_node("reception", reception_node)
+    workflow.add_node("translate_terms", translate_terms_node)
     workflow.add_node("clarify", clarify_node)
     workflow.add_node("fetch_trial_data", fetch_trial_data_node)
     workflow.add_node("check_eligibility", check_eligibility_node)
     workflow.add_node("explain_criteria", explain_criteria_node)
+    workflow.add_node("compare_trials", compare_trials_node)
     workflow.add_node("search", search_clinical_trials_node)
     workflow.add_node("rerank", rerank_with_llm_node)
     workflow.add_node("synthesize", synthesize_answer_node)
@@ -806,6 +948,7 @@ def create_workflow():
         route_from_intent,
         {
             "reception": "reception",
+            "translate_terms": "translate_terms",
             "search": "search",
             "fetch_trial_data": "fetch_trial_data",
             "clarify": "clarify",
@@ -815,10 +958,13 @@ def create_workflow():
     # Reception (greeting/off-topic) flow
     workflow.add_edge("reception", END)
 
+    # Translate terms flow
+    workflow.add_edge("translate_terms", END)
+
     # Clarification flow
     workflow.add_edge("clarify", END)
 
-    # Fetch trial data routes to summarize, check eligibility, or explain criteria (always has required info)
+    # Fetch trial data routes to summarize, check eligibility, explain criteria, or compare (always has required info)
     workflow.add_conditional_edges(
         "fetch_trial_data",
         route_after_fetch,
@@ -826,6 +972,7 @@ def create_workflow():
             "summarize_trial": "summarize_trial",
             "check_eligibility": "check_eligibility",
             "explain_criteria": "explain_criteria",
+            "compare_trials": "compare_trials",
         },
     )
 
@@ -837,6 +984,9 @@ def create_workflow():
 
     # Explain criteria flow
     workflow.add_edge("explain_criteria", END)
+
+    # Compare trials flow
+    workflow.add_edge("compare_trials", END)
 
     # Find trials flow (patient matching)
     workflow.add_edge("search", "rerank")
