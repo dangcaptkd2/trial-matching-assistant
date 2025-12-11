@@ -1,7 +1,6 @@
 """LangGraph workflow definition and nodes for clinical trial matching."""
 
 import asyncio
-import json
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -10,19 +9,12 @@ from langgraph.graph import END, StateGraph
 
 from src.config.settings import settings
 from src.core.memory import get_checkpointer
-from src.core.state import GraphState
-from src.prompts.prompts import (
-    check_eligibility_prompt,
-    clarification_prompt,
-    compare_trials_prompt,
-    explain_criteria_prompt,
-    intent_classification_prompt,
-    reception_prompt,
-    rerank_prompt,
-    summarize_trial_prompt,
-    synthesis_prompt,
-    translate_terms_prompt,
+from src.core.schemas import (
+    IntentClassification,
+    RerankScore,
 )
+from src.core.state import GraphState
+from src.prompts import prompts
 from src.services.search import ElasticsearchTrialSearcher
 
 # Initialize ES searcher
@@ -111,13 +103,14 @@ def intent_classification_node(state: GraphState) -> GraphState:
     # Get conversation context using hybrid approach
     context, context_instruction = get_conversation_context(state, max_messages=3)
 
-    # Create LLM instance for intent classification
+    # Create LLM instance with structured output
     intent_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+    structured_llm = intent_llm.with_structured_output(IntentClassification)
 
     # Format prompt with context
     conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
-    prompt = intent_classification_prompt.format(
+    prompt = prompts.intent_classification_prompt.format(
         user_input=user_input,
         conversation_context=conversation_context_section,
         context_instruction=context_instruction,
@@ -130,24 +123,16 @@ def intent_classification_node(state: GraphState) -> GraphState:
         run_name="intent_classification",
     )
 
-    response = intent_llm.invoke([HumanMessage(content=prompt)], config=config)
-    content = response.content.strip()
-
-    # Extract JSON from response
-    if "```json" in content:
-        content = content.split("```json")[1].split("```")[0].strip()
-    elif "```" in content:
-        content = content.split("```")[1].split("```")[0].strip()
-
-    result = json.loads(content)
+    # Get structured output
+    result = structured_llm.invoke([HumanMessage(content=prompt)], config=config)
 
     # Update messages with user input
     updated_messages = list(messages) if messages else []
     updated_messages.append(HumanMessage(content=user_input))
 
-    # Extract data from LLM response
-    patient_info = result.get("patient_info")
-    trial_ids = result.get("trial_ids")
+    # Extract data from structured output
+    patient_info = result.patient_info
+    trial_ids = result.trial_ids
 
     # Normalize: convert null to None, ensure trial_ids is list or None
     if patient_info is None or patient_info == "":
@@ -163,10 +148,10 @@ def intent_classification_node(state: GraphState) -> GraphState:
     # Return LLM's extracted data
     return {
         "messages": updated_messages,
-        "intent_type": result.get("intent_type", "NEEDS_CLARIFICATION"),
+        "intent_type": result.intent_type.value,
         "patient_info": patient_info,
         "trial_ids": trial_ids,
-        "clarification_reason": result.get("clarification_reason", ""),
+        "clarification_reason": result.clarification_reason,
     }
 
 
@@ -185,7 +170,7 @@ def reception_node(state: GraphState) -> GraphState:
     # Format prompt with context
     conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
-    prompt = reception_prompt.format(
+    prompt = prompts.reception_prompt.format(
         user_input=user_input,
         intent_type=intent_type,
         conversation_context=conversation_context_section,
@@ -221,12 +206,13 @@ def translate_terms_node(state: GraphState) -> GraphState:
     context, context_instruction = get_conversation_context(state, max_messages=3)
 
     # Create LLM instance
+    # Note: translate_terms returns natural language, keeping as-is for now
     translate_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     # Format prompt with context
     conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
-    prompt = translate_terms_prompt.format(
+    prompt = prompts.translate_terms_prompt.format(
         user_input=user_input,
         conversation_context=conversation_context_section,
         context_instruction=context_instruction,
@@ -342,8 +328,9 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
     if not search_results:
         return {"reranked_results": []}
 
-    # Create LLM instance for cross-encoding
+    # Create LLM instance with structured output for cross-encoding
     cross_encoder_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
+    structured_llm = cross_encoder_llm.with_structured_output(RerankScore)
 
     async def score_trial(trial: dict) -> dict:
         """Use LLM to score a single trial against patient profile"""
@@ -355,27 +342,21 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
                 "match_reasoning": "No eligibility criteria available",
             }
 
-        prompt = rerank_prompt.format(patient_profile=patient_info, eligibility=eligibility)
+        prompt = prompts.rerank_prompt.format(patient_profile=patient_info, eligibility=eligibility)
 
         config = RunnableConfig(
             metadata={"node": "rerank_with_llm", "operation": "trial_scoring"},
             tags=["rerank", "cross-encoder", "trial-matching"],
             run_name="rerank_trial_scoring",
         )
-        response = await cross_encoder_llm.ainvoke([HumanMessage(content=prompt)], config=config)
-        content = response.content.strip()
 
-        # Extract JSON from response
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+        # Get structured output
+        result = await structured_llm.ainvoke([HumanMessage(content=prompt)], config=config)
 
-        result = json.loads(content)
         return {
             **trial,
-            "llm_score": float(result.get("score", 0.0)),
-            "match_reasoning": result.get("reasoning", "No reasoning provided"),
+            "llm_score": result.score,
+            "match_reasoning": result.reasoning,
         }
 
     # Run all LLM calls in parallel - much simpler with async node!
@@ -431,9 +412,10 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
     # Create LLM instance for synthesis
+    # Note: synthesis returns natural language, keeping as-is for now
     synthesis_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
-    prompt = synthesis_prompt.format(
+    prompt = prompts.synthesis_prompt.format(
         user_input=user_input,
         patient_profile=patient_info,
         reranked_trials=trials_text,
@@ -552,7 +534,7 @@ async def clarify_node(state: GraphState) -> GraphState:
     # Create LLM instance for clarification
     clarify_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
-    prompt = clarification_prompt.format(
+    prompt = prompts.clarification_prompt.format(
         user_input=user_input,
         clarification_context=clarification_context,
         clarification_instructions=clarification_instructions,
@@ -569,6 +551,7 @@ async def clarify_node(state: GraphState) -> GraphState:
         tags=["clarification", "user-interaction"],
         run_name="clarify",
     )
+
     response = clarify_llm.invoke([HumanMessage(content=prompt)], config=config)
     clarification_response = response.content.strip()
 
@@ -670,7 +653,7 @@ def summarize_trial_node(state: GraphState) -> GraphState:
     # Create LLM to summarize the trial(s)
     synthesis_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
-    prompt = summarize_trial_prompt.format(
+    prompt = prompts.summarize_trial_prompt.format(
         user_input=user_input,
         trial_information=trials_text,
         conversation_context=conversation_context_section,
@@ -740,7 +723,7 @@ async def check_eligibility_node(state: GraphState) -> GraphState:
     # Create LLM instance
     check_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
-    prompt = check_eligibility_prompt.format(
+    prompt = prompts.check_eligibility_prompt.format(
         user_input=user_input,
         conversation_context=conversation_context_section,
         patient_profile=patient_info,
@@ -788,6 +771,7 @@ def explain_criteria_node(state: GraphState) -> GraphState:
     conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
     # Create LLM instance
+    # Note: explain_criteria returns natural language. Could use CriteriaExplanation schema in future
     explain_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     # Process each trial separately
@@ -801,7 +785,7 @@ def explain_criteria_node(state: GraphState) -> GraphState:
         trial_title = trial.get("title", "N/A")
         eligibility_criteria = trial.get("eligibility_criteria", "Not available")
 
-        prompt = explain_criteria_prompt.format(
+        prompt = prompts.explain_criteria_prompt.format(
             conversation_context=conversation_context_section,
             trial_id=trial_id,
             trial_title=trial_title,
@@ -894,9 +878,10 @@ def compare_trials_node(state: GraphState) -> GraphState:
     conversation_context_section = f"\nPREVIOUS CONVERSATION:\n{context}\n" if context else ""
 
     # Create LLM to compare the trials
+    # Note: compare_trials returns natural language. Could use TrialComparison schema in future
     compare_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
-    prompt = compare_trials_prompt.format(
+    prompt = prompts.compare_trials_prompt.format(
         user_input=user_input,
         trial_information=trials_text,
         conversation_context=conversation_context_section,
