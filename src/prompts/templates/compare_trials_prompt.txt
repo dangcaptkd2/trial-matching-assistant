@@ -45,3 +45,5 @@ Create a clear, side-by-side comparison of the trials. Your comparison should:
 
 Keep your response conversational and helpful. If the user asks which trial is "less demanding," help them understand the practical differences in terms of time, travel, and requirements.
 
+**IMPORTANT: Respond in the same language as the user's input. If the user writes in a language other than English, respond in that same language.**
+

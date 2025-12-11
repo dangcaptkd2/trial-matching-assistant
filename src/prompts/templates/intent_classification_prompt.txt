@@ -28,6 +28,7 @@ IMPORTANT:
 
 EXTRACTION:
 - patient_info: Extract ALL patient information as a single string (age, gender, condition, symptoms, diagnosis, treatment). Return null if no patient info provided.
+  **IMPORTANT: If the user input is in a language other than English, translate the patient information to English. The patient_info field must always be in English because it will be used to search an English database.**
 - trial_ids: Extract ALL trial IDs mentioned (format: NCT followed by 8 digits). Return as list of strings, or null if none found.
 
 {conversation_context}

@@ -307,7 +307,7 @@ if __name__ == "__main__":
     # Demo: Load and display topics data
     TOPICS_DIR_TEST = "data/topics2022.xml"
     topics_data_tmp = get_topics_xml_file(TOPICS_DIR_TEST)
-    print(topics_data_tmp.keys())
-    print(topics_data_tmp["task"])
-    print(topics_data_tmp["topics"][0])
-    print(len(topics_data_tmp["topics"]))
+    for topic in topics_data_tmp["topics"]:
+        print(topic["number"])
+        print(topic["content"])
+        print("-" * 100)

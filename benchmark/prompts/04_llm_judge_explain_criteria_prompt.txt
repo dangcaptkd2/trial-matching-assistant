@@ -1,5 +1,8 @@
 You are an expert evaluator for clinical trial eligibility criteria explanation systems. Your task is to evaluate the quality of explanations that convert complex medical eligibility criteria into simple, everyday language.
 
+USER INPUT:
+{user_input}
+
 TRIAL INFORMATION:
 NCT ID: {trial_id}
 Title: {trial_title}
@@ -8,7 +11,7 @@ Eligibility Criteria: {eligibility_criteria}
 SYSTEM EXPLANATION:
 {response}
 
-Evaluate the explanation on three criteria (1-5 scale, where 5 is BEST and 1 is WORST):
+Evaluate the explanation on four criteria (1-5 scale, where 5 is BEST and 1 is WORST):
 
 1. HALLUCINATION (1-5 scale, 5=BEST, 1=WORST):
    - 5: All information is accurate and grounded in the provided eligibility criteria, no made-up claims
@@ -31,6 +34,13 @@ Evaluate the explanation on three criteria (1-5 scale, where 5 is BEST and 1 is 
    - 2: Somewhat confusing or poorly structured
    - 1: Very confusing, hard to understand, poorly organized, or uses too much medical jargon
 
+4. LANGUAGE_CORRECTION (1-5 scale, 5=BEST, 1=WORST):
+   - 5: Response language perfectly matches the user input language (e.g., if user wrote in Spanish, response is in Spanish)
+   - 4: Response language mostly matches user input language with minor inconsistencies
+   - 3: Response language partially matches user input language but has some language mixing or inconsistencies
+   - 2: Response language does not match user input language (e.g., user wrote in Spanish but response is in English)
+   - 1: Response language completely mismatches user input language or is in wrong language entirely
+
 Note: The explanation should clearly separate inclusion criteria (who CAN participate) from exclusion criteria (who CANNOT participate), use everyday language instead of medical jargon, and highlight the most important points.
 
 Provide your evaluation as JSON:
@@ -40,10 +50,12 @@ Provide your evaluation as JSON:
     "accuracy": <score 1-5, where 5 is BEST (fully accurate) and 1 is WORST (mostly inaccurate)>,
     "accuracy_reasoning": "<brief explanation>",
     "clarity": <score 1-5, where 5 is BEST (very clear) and 1 is WORST (very confusing)>,
-    "clarity_reasoning": "<brief explanation>"
+    "clarity_reasoning": "<brief explanation>",
+    "language_correction": <score 1-5, where 5 is BEST (perfect language match) and 1 is WORST (complete language mismatch)>,
+    "language_correction_reasoning": "<brief explanation - note the languages of user input and response>"
 }}
 
-CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the explanation has no hallucinations, score hallucination as 5. If it's fully accurate, score accuracy as 5. If it's very clear, score clarity as 5.
+CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the explanation has no hallucinations, score hallucination as 5. If it's fully accurate, score accuracy as 5. If it's very clear, score clarity as 5. If the response language perfectly matches the user input language, score language_correction as 5.
 
-Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided eligibility criteria. Base accuracy scores on whether the explanation correctly interprets and presents the criteria. Base clarity scores on how well the explanation uses simple language and is organized for patients.
+Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided eligibility criteria. Base accuracy scores on whether the explanation correctly interprets and presents the criteria. Base clarity scores on how well the explanation uses simple language and is organized for patients. Base language_correction scores on whether the response language matches the user input language.
 

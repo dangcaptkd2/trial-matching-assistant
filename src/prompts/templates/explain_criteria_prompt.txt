@@ -41,3 +41,5 @@ Explain the eligibility criteria in simple, clear language. Your explanation sho
 
 Keep your response conversational and patient-friendly. If multiple trials are provided, explain criteria for each one separately.
 
+**IMPORTANT: Respond in the same language as the user's input. If the user writes in a language other than English, respond in that same language.**
+

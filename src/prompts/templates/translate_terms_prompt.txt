@@ -34,5 +34,7 @@ Guidelines:
    - Use "you" or "patients" instead of formal language
    - Keep it friendly and approachable
 
+6. **IMPORTANT: Respond in the same language as the user's input. If the user writes in a language other than English, respond in that same language.**
+
 Provide clear, patient-friendly explanations for all medical terms mentioned in the user's query.
 

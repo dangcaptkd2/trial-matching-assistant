@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Evaluation script for eligibility checking feature using topics2023.xml and qrels2022.txt."""
 
+import argparse
 import asyncio
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from benchmark.xml_data_utils import (
     parse_qrels_file,
@@ -59,9 +60,34 @@ async def fetch_trial_data(trial_id: str, es_searcher: ElasticsearchTrialSearche
         }
 
 
+class EligibilityEvaluation(BaseModel):
+    """Pydantic model for eligibility evaluation scores."""
+
+    hallucination: int = Field(
+        description="Hallucination score (1-5 scale, where 5 is BEST and 1 is WORST). Score whether all information is grounded in the provided patient profile and trial eligibility criteria."
+    )
+    hallucination_reasoning: str = Field(description="Brief explanation for the hallucination score")
+    accuracy: int = Field(
+        description="Accuracy score (1-5 scale, where 5 is BEST and 1 is WORST). Score whether the eligibility determination is correct and matches ground truth, with accurate reasoning."
+    )
+    accuracy_reasoning: str = Field(
+        description="Brief explanation for the accuracy score, noting if determination matches ground truth"
+    )
+    clarity: int = Field(
+        description="Clarity score (1-5 scale, where 5 is BEST and 1 is WORST). Score how clear, well-organized, and easy to understand the response is."
+    )
+    clarity_reasoning: str = Field(description="Brief explanation for the clarity score")
+    language_correction: int = Field(
+        description="Language correction score (1-5 scale, where 5 is BEST and 1 is WORST). Score how well the response language matches the user input language."
+    )
+    language_correction_reasoning: str = Field(
+        description="Brief explanation for the language correction score, noting the languages of user input and response"
+    )
+
+
 def load_llm_judge_prompt() -> str:
     """Load the LLM judge prompt template for eligibility evaluation."""
-    prompt_file = Path("benchmark/prompts/llm_judge_eligibility_prompt.txt")
+    prompt_file = Path("benchmark/prompts/03_llm_judge_eligibility_prompt.txt")
     return prompt_file.read_text(encoding="utf-8")
 
 
@@ -70,6 +96,7 @@ async def llm_evaluate_eligibility(
     trial_data: dict,
     ground_truth_label: int,
     workflow_answer: str,
+    user_input: str = "",
 ) -> dict:
     """Use LLM to evaluate the eligibility determination quality."""
     # Get ground truth info
@@ -83,6 +110,7 @@ async def llm_evaluate_eligibility(
     # Load and format prompt
     prompt_template = load_llm_judge_prompt()
     prompt = prompt_template.format(
+        user_input=user_input,
         patient_profile=patient_profile,
         trial_id=trial_id,
         trial_title=trial_title,
@@ -92,30 +120,24 @@ async def llm_evaluate_eligibility(
         workflow_answer=workflow_answer,
     )
 
-    # Call LLM
+    # Initialize the model with structured output
     llm = ChatOpenAI(model=settings.llm_judge_model, temperature=0.0)
+    structured_llm = llm.with_structured_output(EligibilityEvaluation)
 
     try:
-        response_msg = await llm.ainvoke([HumanMessage(content=prompt)])
-        content = response_msg.content.strip()
-
-        # Extract JSON from response
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(content)
+        # Get structured output
+        evaluation_result = await structured_llm.ainvoke([HumanMessage(content=prompt)])
 
         return {
-            "hallucination": result.get("hallucination", None),
-            "hallucination_reasoning": result.get("hallucination_reasoning", ""),
-            "accuracy": result.get("accuracy", None),
-            "accuracy_reasoning": result.get("accuracy_reasoning", ""),
-            "clarity": result.get("clarity", None),
-            "clarity_reasoning": result.get("clarity_reasoning", ""),
+            "hallucination": evaluation_result.hallucination,
+            "hallucination_reasoning": evaluation_result.hallucination_reasoning,
+            "accuracy": evaluation_result.accuracy,
+            "accuracy_reasoning": evaluation_result.accuracy_reasoning,
+            "clarity": evaluation_result.clarity,
+            "clarity_reasoning": evaluation_result.clarity_reasoning,
+            "language_correction": evaluation_result.language_correction,
+            "language_correction_reasoning": evaluation_result.language_correction_reasoning,
         }
-
     except Exception as e:
         print(f"  LLM evaluation error: {str(e)}")
         return {
@@ -125,6 +147,8 @@ async def llm_evaluate_eligibility(
             "accuracy_reasoning": f"Error: {str(e)}",
             "clarity": None,
             "clarity_reasoning": f"Error: {str(e)}",
+            "language_correction": None,
+            "language_correction_reasoning": f"Error: {str(e)}",
         }
 
 
@@ -135,12 +159,20 @@ async def run_single_eligibility_check(
     patient_profile: str,
     workflow_service: WorkflowService,
     es_searcher: ElasticsearchTrialSearcher,
+    language: str = "en",
 ) -> dict:
     """Run workflow for a single topic-trial pair and capture results."""
-    # Format query to trigger eligibility check
-    query = f"Is this patient eligible for {trial_id}? {patient_profile}"
+    # Format query to trigger eligibility check based on language
+    if language == "vi":
+        query = f"Bệnh nhân này có đủ điều kiện cho {trial_id} không? {patient_profile}"
+    else:
+        query = f"Is this patient eligible for {trial_id}? {patient_profile}"
 
-    print(f"Running topic {topic_number} + trial {trial_id} (label={ground_truth_label})...", end=" ", flush=True)
+    print(
+        f"Running topic {topic_number} + trial {trial_id} (label={ground_truth_label}, {language})...",
+        end=" ",
+        flush=True,
+    )
 
     start_time = datetime.now()
     result_data = None
@@ -172,6 +204,7 @@ async def run_single_eligibility_check(
             "response": response,
             "trial_data": trial_data,
             "execution_time": elapsed,
+            "language": language,
         }
 
         # Always run LLM evaluation
@@ -181,10 +214,11 @@ async def run_single_eligibility_check(
                 trial_data,
                 ground_truth_label,
                 response,
+                user_input=query,
             )
             evaluation_result["llm_scores"] = llm_scores
             print(
-                f"✓ ({elapsed:.1f}s) [LLM: H={llm_scores.get('hallucination', '?')} A={llm_scores.get('accuracy', '?')} C={llm_scores.get('clarity', '?')}]"
+                f"✓ ({elapsed:.1f}s) [LLM: H={llm_scores.get('hallucination', '?')} A={llm_scores.get('accuracy', '?')} C={llm_scores.get('clarity', '?')} L={llm_scores.get('language_correction', '?')}]"
             )
         else:
             print(f"✓ ({elapsed:.1f}s)")
@@ -203,16 +237,19 @@ async def run_single_eligibility_check(
             "response": f"ERROR: {str(e)}",
             "execution_time": elapsed,
             "error": str(e),
+            "language": language,
         }
 
 
 async def run_evaluation(
     topics_file: str = "/Users/quyen.nguyen/Personal/uit/trec_2023/topics2023.xml",
     qrels_file: str = "data/qrels2022.txt",
+    language: str = "en",
 ):
     """Run evaluation on sampled topic-trial pairs."""
     print("=" * 80)
     print("Clinical Trial Eligibility Evaluation")
+    print(f"Language: {language.upper()}")
     print("(with LLM-as-Judge automatic scoring)")
     print("=" * 80)
 
@@ -263,6 +300,7 @@ async def run_evaluation(
             patient_profile,
             workflow_service,
             es_searcher,
+            language=language,
         )
         results.append(result)
 
@@ -274,12 +312,19 @@ async def run_evaluation(
         avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
         avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
         avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+        lang_corr_scored = [r for r in llm_scored if r["llm_scores"].get("language_correction") is not None]
+        avg_l = (
+            sum(r["llm_scores"]["language_correction"] for r in lang_corr_scored) / len(lang_corr_scored)
+            if lang_corr_scored
+            else None
+        )
 
         average_scores = {
             "overall": {
                 "hallucination": round(avg_h, 2),
                 "accuracy": round(avg_a, 2),
                 "clarity": round(avg_c, 2),
+                "language_correction": round(avg_l, 2) if avg_l is not None else None,
                 "total_scored": len(llm_scored),
             }
         }
@@ -293,12 +338,19 @@ async def run_evaluation(
                 avg_h_label = sum(r["llm_scores"]["hallucination"] for r in label_results) / len(label_results)
                 avg_a_label = sum(r["llm_scores"]["accuracy"] for r in label_results) / len(label_results)
                 avg_c_label = sum(r["llm_scores"]["clarity"] for r in label_results) / len(label_results)
+                lang_corr_label = [r for r in label_results if r["llm_scores"].get("language_correction") is not None]
+                avg_l_label = (
+                    sum(r["llm_scores"]["language_correction"] for r in lang_corr_label) / len(lang_corr_label)
+                    if lang_corr_label
+                    else None
+                )
 
                 by_label[str(label)] = {
                     "label_name": label_name,
                     "hallucination": round(avg_h_label, 2),
                     "accuracy": round(avg_a_label, 2),
                     "clarity": round(avg_c_label, 2),
+                    "language_correction": round(avg_l_label, 2) if avg_l_label is not None else None,
                     "count": len(label_results),
                 }
 
@@ -309,12 +361,14 @@ async def run_evaluation(
     output_dir = Path("benchmark/results")
     output_dir.mkdir(exist_ok=True)
 
-    output_file = output_dir / "eligibility_results.json"
+    # Include language in filename to avoid overwriting
+    output_file = output_dir / f"eligibility_results_{language}.json"
 
     output_data = {
         "timestamp": datetime.now().isoformat(),
         "topics_file": topics_file,
         "qrels_file": qrels_file,
+        "language": language,
         "label_counts": label_counts,
         "total_samples": len(samples),
         "results": results,
@@ -373,6 +427,9 @@ def review_results(results_file: str):
                 f"  Accuracy: {llm_scores.get('accuracy', '?')}/5 - {llm_scores.get('accuracy_reasoning', '')[:80]}..."
             )
             print(f"  Clarity: {llm_scores.get('clarity', '?')}/5 - {llm_scores.get('clarity_reasoning', '')[:80]}...")
+            print(
+                f"  Language Correction: {llm_scores.get('language_correction', '?')}/5 - {llm_scores.get('language_correction_reasoning', '')[:80]}..."
+            )
         else:
             print("\n⚠️  No LLM scores available")
 
@@ -387,9 +444,17 @@ def review_results(results_file: str):
         avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
         avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
         avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+        lang_corr_scored = [r for r in llm_scored if r["llm_scores"].get("language_correction") is not None]
+        avg_l = (
+            sum(r["llm_scores"]["language_correction"] for r in lang_corr_scored) / len(lang_corr_scored)
+            if lang_corr_scored
+            else None
+        )
         print(f"  Average Hallucination: {avg_h:.2f}")
         print(f"  Average Accuracy: {avg_a:.2f}")
         print(f"  Average Clarity: {avg_c:.2f}")
+        if avg_l is not None:
+            print(f"  Average Language Correction: {avg_l:.2f}")
 
         # Group by ground truth label
         print("\n📊 Scores by Ground Truth Label:")
@@ -400,26 +465,40 @@ def review_results(results_file: str):
                 avg_h_label = sum(r["llm_scores"]["hallucination"] for r in label_results) / len(label_results)
                 avg_a_label = sum(r["llm_scores"]["accuracy"] for r in label_results) / len(label_results)
                 avg_c_label = sum(r["llm_scores"]["clarity"] for r in label_results) / len(label_results)
+                lang_corr_label = [r for r in label_results if r["llm_scores"].get("language_correction") is not None]
+                avg_l_label = (
+                    sum(r["llm_scores"]["language_correction"] for r in lang_corr_label) / len(lang_corr_label)
+                    if lang_corr_label
+                    else None
+                )
                 print(f"  Label {label} ({label_name}) - {len(label_results)} samples:")
-                print(f"    Avg H: {avg_h_label:.2f}, Avg A: {avg_a_label:.2f}, Avg C: {avg_c_label:.2f}")
+                print(f"    Avg H: {avg_h_label:.2f}, Avg A: {avg_a_label:.2f}, Avg C: {avg_c_label:.2f}", end="")
+                if avg_l_label is not None:
+                    print(f", Avg L: {avg_l_label:.2f}")
+                else:
+                    print()
 
         print("=" * 80)
 
 
 def main():
     """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Clinical Trial Eligibility Evaluation Script",
+    )
 
-    if len(sys.argv) > 1 and sys.argv[1] == "review":
-        # Review mode
-        results_file = Path("benchmark/results/eligibility_results.json")
-        if not results_file.exists():
-            print("No results file found. Run evaluation first.")
-            return
+    parser.add_argument(
+        "--lang",
+        "-l",
+        choices=["en", "vi"],
+        default="en",
+        help="Language for evaluation: 'en' for English, 'vi' for Vietnamese",
+    )
 
-        review_results(str(results_file))
-    else:
-        # Evaluation mode (always uses LLM judge)
-        asyncio.run(run_evaluation())
+    args = parser.parse_args()
+
+    # Evaluation mode (always uses LLM judge)
+    asyncio.run(run_evaluation(language=args.lang))
 
 
 if __name__ == "__main__":

@@ -20,3 +20,5 @@ Provide a SHORT summary (4-5 sentences or bullet points) covering:
 
 Keep it concise and patient-friendly. Use simple language. If multiple trials are provided, summarize each one separately.
 
+**IMPORTANT: Respond in the same language as the user's input. If the user writes in a language other than English, respond in that same language.**
+

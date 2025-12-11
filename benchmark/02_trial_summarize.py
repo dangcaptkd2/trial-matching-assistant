@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Evaluation script for trial summarization feature using 50 trial IDs."""
 
+import argparse
 import asyncio
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from src.api.services.workflow import WorkflowService
 from src.config.settings import settings
@@ -78,42 +79,59 @@ def format_response(result: dict) -> str:
         return "No response generated."
 
 
+class SummarizationEvaluation(BaseModel):
+    """Pydantic model for trial summarization evaluation scores."""
+
+    hallucination: int = Field(
+        description="Hallucination score (1-5 scale, where 5 is BEST and 1 is WORST). Score whether all information is accurate and grounded in actual trial data."
+    )
+    hallucination_reasoning: str = Field(description="Brief explanation for the hallucination score")
+    accuracy: int = Field(
+        description="Accuracy score (1-5 scale, where 5 is BEST and 1 is WORST). Score how accurately the summary captures all key trial information."
+    )
+    accuracy_reasoning: str = Field(description="Brief explanation for the accuracy score")
+    clarity: int = Field(
+        description="Clarity score (1-5 scale, where 5 is BEST and 1 is WORST). Score how clear, well-organized, and concise the summary is."
+    )
+    clarity_reasoning: str = Field(description="Brief explanation for the clarity score")
+    language_correction: int = Field(
+        description="Language correction score (1-5 scale, where 5 is BEST and 1 is WORST). Score how well the response language matches the user input language."
+    )
+    language_correction_reasoning: str = Field(
+        description="Brief explanation for the language correction score, noting the languages of user input and response"
+    )
+
+
 def load_llm_judge_prompt() -> str:
     """Load the LLM judge prompt template for summarization."""
-    prompt_file = Path("benchmark/prompts/llm_judge_summarize_prompt.txt")
+    prompt_file = Path("benchmark/prompts/02_llm_judge_summarize_prompt.txt")
     return prompt_file.read_text(encoding="utf-8")
 
 
-async def llm_evaluate_summarization(trial_id: str, response: str) -> dict:
+async def llm_evaluate_summarization(trial_id: str, response: str, user_input: str = "") -> dict:
     """Use LLM to evaluate the summarization quality."""
     # Load and format prompt
     prompt_template = load_llm_judge_prompt()
-    prompt = prompt_template.format(trial_id=trial_id, response=response)
+    prompt = prompt_template.format(user_input=user_input, trial_id=trial_id, response=response)
 
-    # Call LLM
+    # Initialize the model with structured output
     llm = ChatOpenAI(model=settings.llm_judge_model, temperature=0.0)
+    structured_llm = llm.with_structured_output(SummarizationEvaluation)
 
     try:
-        response_msg = await llm.ainvoke([HumanMessage(content=prompt)])
-        content = response_msg.content.strip()
-
-        # Extract JSON from response
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(content)
+        # Get structured output
+        evaluation_result = await structured_llm.ainvoke([HumanMessage(content=prompt)])
 
         return {
-            "hallucination": result.get("hallucination", None),
-            "hallucination_reasoning": result.get("hallucination_reasoning", ""),
-            "accuracy": result.get("accuracy", None),
-            "accuracy_reasoning": result.get("accuracy_reasoning", ""),
-            "clarity": result.get("clarity", None),
-            "clarity_reasoning": result.get("clarity_reasoning", ""),
+            "hallucination": evaluation_result.hallucination,
+            "hallucination_reasoning": evaluation_result.hallucination_reasoning,
+            "accuracy": evaluation_result.accuracy,
+            "accuracy_reasoning": evaluation_result.accuracy_reasoning,
+            "clarity": evaluation_result.clarity,
+            "clarity_reasoning": evaluation_result.clarity_reasoning,
+            "language_correction": evaluation_result.language_correction,
+            "language_correction_reasoning": evaluation_result.language_correction_reasoning,
         }
-
     except Exception as e:
         print(f"  LLM evaluation error: {str(e)}")
         return {
@@ -123,15 +141,20 @@ async def llm_evaluate_summarization(trial_id: str, response: str) -> dict:
             "accuracy_reasoning": f"Error: {str(e)}",
             "clarity": None,
             "clarity_reasoning": f"Error: {str(e)}",
+            "language_correction": None,
+            "language_correction_reasoning": f"Error: {str(e)}",
         }
 
 
-async def run_single_trial(trial_id: str, workflow_service: WorkflowService) -> dict:
+async def run_single_trial(trial_id: str, workflow_service: WorkflowService, language: str = "en") -> dict:
     """Run workflow for a single trial ID and capture results."""
-    # Format query to trigger summarization
-    query = f"Summarize {trial_id}"
+    # Format query to trigger summarization based on language
+    if language == "vi":
+        query = f"Tóm tắt {trial_id}"
+    else:
+        query = f"Summarize {trial_id}"
 
-    print(f"Running trial {trial_id}...", end=" ", flush=True)
+    print(f"Running trial {trial_id} ({language})...", end=" ", flush=True)
 
     start_time = datetime.now()
     result_data = None
@@ -155,14 +178,15 @@ async def run_single_trial(trial_id: str, workflow_service: WorkflowService) -> 
             "query": query,
             "response": response,
             "execution_time": elapsed,
+            "language": language,
         }
 
         # Always run LLM evaluation
         if result_data:
-            llm_scores = await llm_evaluate_summarization(trial_id, response)
+            llm_scores = await llm_evaluate_summarization(trial_id, response, user_input=query)
             evaluation_result["llm_scores"] = llm_scores
             print(
-                f"✓ ({elapsed:.1f}s) [LLM: H={llm_scores.get('hallucination', '?')} A={llm_scores.get('accuracy', '?')} C={llm_scores.get('clarity', '?')}]"
+                f"✓ ({elapsed:.1f}s) [LLM: H={llm_scores.get('hallucination', '?')} A={llm_scores.get('accuracy', '?')} C={llm_scores.get('clarity', '?')} L={llm_scores.get('language_correction', '?')}]"
             )
         else:
             print(f"✓ ({elapsed:.1f}s)")
@@ -178,13 +202,15 @@ async def run_single_trial(trial_id: str, workflow_service: WorkflowService) -> 
             "response": f"ERROR: {str(e)}",
             "execution_time": elapsed,
             "error": str(e),
+            "language": language,
         }
 
 
-async def run_evaluation():
+async def run_evaluation(language: str = "en"):
     """Run evaluation on all trial IDs."""
     print("=" * 80)
     print("Clinical Trial Summarization Evaluation")
+    print(f"Language: {language.upper()}")
     print("(with LLM-as-Judge automatic scoring)")
     print("=" * 80)
 
@@ -202,7 +228,7 @@ async def run_evaluation():
     results = []
     for i, trial_id in enumerate(TRIAL_IDS, 1):
         print(f"[{i}/{len(TRIAL_IDS)}] ", end="")
-        result = await run_single_trial(trial_id, workflow_service)
+        result = await run_single_trial(trial_id, workflow_service, language=language)
         results.append(result)
 
     # Calculate average scores
@@ -213,12 +239,19 @@ async def run_evaluation():
         avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
         avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
         avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+        lang_corr_scored = [r for r in llm_scored if r["llm_scores"].get("language_correction") is not None]
+        avg_l = (
+            sum(r["llm_scores"]["language_correction"] for r in lang_corr_scored) / len(lang_corr_scored)
+            if lang_corr_scored
+            else None
+        )
 
         average_scores = {
             "overall": {
                 "hallucination": round(avg_h, 2),
                 "accuracy": round(avg_a, 2),
                 "clarity": round(avg_c, 2),
+                "language_correction": round(avg_l, 2) if avg_l is not None else None,
                 "total_scored": len(llm_scored),
             }
         }
@@ -227,10 +260,12 @@ async def run_evaluation():
     output_dir = Path("benchmark/results")
     output_dir.mkdir(exist_ok=True)
 
-    output_file = output_dir / "summarize_results.json"
+    # Include language in filename to avoid overwriting
+    output_file = output_dir / f"summarize_results_{language}.json"
 
     output_data = {
         "timestamp": datetime.now().isoformat(),
+        "language": language,
         "total_trials": len(TRIAL_IDS),
         "results": results,
         "average_scores": average_scores,
@@ -283,6 +318,9 @@ def review_results(results_file: str):
                 f"  Accuracy: {llm_scores.get('accuracy', '?')}/5 - {llm_scores.get('accuracy_reasoning', '')[:80]}..."
             )
             print(f"  Clarity: {llm_scores.get('clarity', '?')}/5 - {llm_scores.get('clarity_reasoning', '')[:80]}...")
+            print(
+                f"  Language Correction: {llm_scores.get('language_correction', '?')}/5 - {llm_scores.get('language_correction_reasoning', '')[:80]}..."
+            )
         else:
             print("\n⚠️  No LLM scores available")
 
@@ -297,26 +335,38 @@ def review_results(results_file: str):
         avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
         avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
         avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+        lang_corr_scored = [r for r in llm_scored if r["llm_scores"].get("language_correction") is not None]
+        avg_l = (
+            sum(r["llm_scores"]["language_correction"] for r in lang_corr_scored) / len(lang_corr_scored)
+            if lang_corr_scored
+            else None
+        )
         print(f"  Average Hallucination: {avg_h:.2f}")
         print(f"  Average Accuracy: {avg_a:.2f}")
         print(f"  Average Clarity: {avg_c:.2f}")
+        if avg_l is not None:
+            print(f"  Average Language Correction: {avg_l:.2f}")
         print("=" * 80)
 
 
 def main():
     """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Clinical Trial Summarization Evaluation Script",
+    )
 
-    if len(sys.argv) > 1 and sys.argv[1] == "review":
-        # Review mode
-        results_file = Path("benchmark/results/summarize_results.json")
-        if not results_file.exists():
-            print("No results file found. Run evaluation first.")
-            return
+    parser.add_argument(
+        "--lang",
+        "-l",
+        choices=["en", "vi"],
+        default="en",
+        help="Language for evaluation: 'en' for English, 'vi' for Vietnamese",
+    )
 
-        review_results(str(results_file))
-    else:
-        # Evaluation mode (always uses LLM judge)
-        asyncio.run(run_evaluation())
+    args = parser.parse_args()
+
+    # Evaluation mode (always uses LLM judge)
+    asyncio.run(run_evaluation(language=args.lang))
 
 
 if __name__ == "__main__":

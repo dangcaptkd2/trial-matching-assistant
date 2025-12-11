@@ -405,6 +405,7 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     """Node: Synthesize reranked results into a natural language answer"""
     reranked_results = state.get("reranked_results", [])
     patient_info = state.get("patient_info", "")
+    user_input = state.get("user_input", "")
     messages = state.get("messages", [])
 
     if not reranked_results:
@@ -433,6 +434,7 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     synthesis_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     prompt = synthesis_prompt.format(
+        user_input=user_input,
         patient_profile=patient_info,
         reranked_trials=trials_text,
         conversation_context=conversation_context_section,
@@ -700,6 +702,7 @@ async def check_eligibility_node(state: GraphState) -> GraphState:
     """Node: Check if a patient is eligible for a specific trial"""
     trial_data = state.get("trial_data", [])
     patient_info = state.get("patient_info", "")
+    user_input = state.get("user_input", "")
     messages = state.get("messages", [])
 
     if not trial_data:
@@ -738,6 +741,7 @@ async def check_eligibility_node(state: GraphState) -> GraphState:
     check_llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
 
     prompt = check_eligibility_prompt.format(
+        user_input=user_input,
         conversation_context=conversation_context_section,
         patient_profile=patient_info,
         trial_id=target_trial_id,

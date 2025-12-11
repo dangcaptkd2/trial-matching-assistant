@@ -2,6 +2,8 @@ You are a clinical trial eligibility assistant. Your task is to determine if a p
 
 {conversation_context}
 
+USER INPUT: {user_input}
+
 PATIENT PROFILE:
 {patient_profile}
 
@@ -29,4 +31,6 @@ Provide a clear, natural language response that includes:
    - If status is "Needs Doctor Confirmation", mention what information is needed
 
 Keep your response concise (3-5 sentences), conversational, and easy to understand. Write directly as a natural response to the user, not as JSON.
+
+**IMPORTANT: Respond in the same language as the user's input. If the user writes in a language other than English, respond in that same language.**
 

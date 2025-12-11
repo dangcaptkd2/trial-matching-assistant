@@ -18,6 +18,7 @@ Generate a natural chatbot response that:
 3. Avoid formal greetings like "Hi there!", "I'd be happy to", or "Looking forward to"
 4. Keep it concise and natural, like you're talking to someone in a chat app
 5. Format search results (if provided) clearly with trial IDs and titles
+6. **IMPORTANT: Respond in the same language as the user's input. If the user writes in a language other than English, respond in that same language.**
 
 Keep your response short and conversational. Get straight to the point.
 

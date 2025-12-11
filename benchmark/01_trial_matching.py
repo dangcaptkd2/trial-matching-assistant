@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Evaluation script for patient matching feature using 50 TREC topics."""
 
+import argparse
 import asyncio
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
 
 from benchmark.xml_data_utils import get_topics_xml_file
 from src.api.services.workflow import WorkflowService
@@ -41,13 +42,36 @@ def extract_trials_found(result: dict) -> list:
     return trials
 
 
+class MatchingEvaluation(BaseModel):
+    """Pydantic model for trial matching evaluation scores."""
+
+    hallucination: int = Field(
+        description="Hallucination score (1-5 scale, where 5 is BEST and 1 is WORST). Score whether all information is grounded in the trial data."
+    )
+    hallucination_reasoning: str = Field(description="Brief explanation for the hallucination score")
+    accuracy: int = Field(
+        description="Accuracy score (1-5 scale, where 5 is BEST and 1 is WORST). Score how relevant and well-matched the trials are to patient criteria."
+    )
+    accuracy_reasoning: str = Field(description="Brief explanation for the accuracy score")
+    clarity: int = Field(
+        description="Clarity score (1-5 scale, where 5 is BEST and 1 is WORST). Score how clear, well-organized, and easy to understand the response is."
+    )
+    clarity_reasoning: str = Field(description="Brief explanation for the clarity score")
+    language_correction: int = Field(
+        description="Language correction score (1-5 scale, where 5 is BEST and 1 is WORST). Score how well the response language matches the user input language."
+    )
+    language_correction_reasoning: str = Field(
+        description="Brief explanation for the language correction score, noting the languages of user input and response"
+    )
+
+
 def load_llm_judge_prompt() -> str:
     """Load the LLM judge prompt template."""
-    prompt_file = Path("benchmark/prompts/llm_judge_prompt.txt")
+    prompt_file = Path("benchmark/prompts/01_llm_judge_prompt.txt")
     return prompt_file.read_text(encoding="utf-8")
 
 
-async def llm_evaluate_response(patient_profile: str, response: str, trials_found: list) -> dict:
+async def llm_evaluate_response(patient_profile: str, response: str, trials_found: list, user_input: str = "") -> dict:
     """Use LLM to evaluate the response quality."""
     # Format trials information
     trials_info = ""
@@ -62,35 +86,30 @@ async def llm_evaluate_response(patient_profile: str, response: str, trials_foun
     # Load and format prompt
     prompt_template = load_llm_judge_prompt()
     prompt = prompt_template.format(
+        user_input=user_input,
         patient_profile=patient_profile,
         trials_info=trials_info,
         response=response,
     )
 
-    # Call LLM
+    # Initialize the model with structured output
     llm = ChatOpenAI(model=settings.llm_judge_model, temperature=0.0)
+    structured_llm = llm.with_structured_output(MatchingEvaluation)
 
     try:
-        response_msg = await llm.ainvoke([HumanMessage(content=prompt)])
-        content = response_msg.content.strip()
-
-        # Extract JSON from response
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-
-        result = json.loads(content)
+        # Get structured output
+        evaluation_result = await structured_llm.ainvoke([HumanMessage(content=prompt)])
 
         return {
-            "hallucination": result.get("hallucination", None),
-            "hallucination_reasoning": result.get("hallucination_reasoning", ""),
-            "accuracy": result.get("accuracy", None),
-            "accuracy_reasoning": result.get("accuracy_reasoning", ""),
-            "clarity": result.get("clarity", None),
-            "clarity_reasoning": result.get("clarity_reasoning", ""),
+            "hallucination": evaluation_result.hallucination,
+            "hallucination_reasoning": evaluation_result.hallucination_reasoning,
+            "accuracy": evaluation_result.accuracy,
+            "accuracy_reasoning": evaluation_result.accuracy_reasoning,
+            "clarity": evaluation_result.clarity,
+            "clarity_reasoning": evaluation_result.clarity_reasoning,
+            "language_correction": evaluation_result.language_correction,
+            "language_correction_reasoning": evaluation_result.language_correction_reasoning,
         }
-
     except Exception as e:
         print(f"  LLM evaluation error: {str(e)}")
         return {
@@ -100,16 +119,24 @@ async def llm_evaluate_response(patient_profile: str, response: str, trials_foun
             "accuracy_reasoning": f"Error: {str(e)}",
             "clarity": None,
             "clarity_reasoning": f"Error: {str(e)}",
+            "language_correction": None,
+            "language_correction_reasoning": f"Error: {str(e)}",
         }
 
 
-async def run_single_topic(topic: dict, workflow_service: WorkflowService) -> dict:
+async def run_single_topic(topic: dict, workflow_service: WorkflowService, language: str = "en") -> dict:
     """Run workflow for a single topic and capture results."""
     topic_number = topic["number"]
-    patient_profile = topic["content"]
-    query = "find trials for this patient: " + patient_profile
 
-    print(f"Running topic {topic_number}...", end=" ", flush=True)
+    # Get patient profile based on language
+    if language == "vi":
+        patient_profile = topic.get("vi_content", topic.get("content", ""))
+        query = "tìm thử nghiệm lâm sàng cho bệnh nhân này: " + patient_profile
+    else:
+        patient_profile = topic.get("content", "")
+        query = "find trials for this patient: " + patient_profile
+
+    print(f"Running topic {topic_number} ({language})...", end=" ", flush=True)
 
     start_time = datetime.now()
     result_data = None
@@ -117,7 +144,7 @@ async def run_single_topic(topic: dict, workflow_service: WorkflowService) -> di
     try:
         async for event in workflow_service.invoke_workflow(
             user_input=query,
-            thread_id=f"eval-topic-{topic_number}",
+            thread_id=f"eval-topic-{topic_number}-{language}",
             top_k=10,
             stream=False,
         ):
@@ -135,14 +162,15 @@ async def run_single_topic(topic: dict, workflow_service: WorkflowService) -> di
             "response": response,
             "trials_found": trials,
             "execution_time": elapsed,
+            "language": language,
         }
 
         # Always run LLM evaluation
         if result_data:
-            llm_scores = await llm_evaluate_response(patient_profile, response, trials)
+            llm_scores = await llm_evaluate_response(patient_profile, response, trials, user_input=query)
             evaluation_result["llm_scores"] = llm_scores
             print(
-                f"✓ ({elapsed:.1f}s) [LLM: H={llm_scores.get('hallucination', '?')} A={llm_scores.get('accuracy', '?')} C={llm_scores.get('clarity', '?')}]"
+                f"✓ ({elapsed:.1f}s) [LLM: H={llm_scores.get('hallucination', '?')} A={llm_scores.get('accuracy', '?')} C={llm_scores.get('clarity', '?')} L={llm_scores.get('language_correction', '?')}]"
             )
             evaluation_result["llm_scores"] = llm_scores
         else:
@@ -160,13 +188,31 @@ async def run_single_topic(topic: dict, workflow_service: WorkflowService) -> di
             "trials_found": [],
             "execution_time": elapsed,
             "error": str(e),
+            "language": language,
         }
 
 
-async def run_evaluation(topics_file: str = "data/topics2022.xml"):
+def load_translated_topics(translated_file: str = "benchmark/results/translated_topics.json") -> dict:
+    """Load translated topics from JSON file."""
+    try:
+        with open(translated_file, "r", encoding="utf-8") as f:
+            translated_data = json.load(f)
+        # Convert to dict by topic number for easy lookup
+        translated_dict = {item["number"]: item for item in translated_data}
+        return translated_dict
+    except FileNotFoundError:
+        print(f"Warning: Translated topics file not found: {translated_file}")
+        return {}
+    except Exception as e:
+        print(f"Warning: Error loading translated topics: {str(e)}")
+        return {}
+
+
+async def run_evaluation(topics_file: str = "data/topics2022.xml", language: str = "en"):
     """Run evaluation on all topics with LLM-as-Judge."""
     print("=" * 80)
     print("Clinical Trial Matching Evaluation")
+    print(f"Language: {language.upper()}")
     print("(with LLM-as-Judge automatic scoring)")
     print("=" * 80)
 
@@ -174,6 +220,24 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
     print(f"\nLoading topics from {topics_file}...")
     topics_data = get_topics_xml_file(topics_file)
     topics = topics_data.get("topics", [])[:10]
+
+    # Load translated topics if Vietnamese
+    translated_topics = {}
+    if language == "vi":
+        print("Loading Vietnamese translations...")
+        translated_topics = load_translated_topics()
+        if not translated_topics:
+            print("Warning: No translated topics found. Falling back to English.")
+            language = "en"
+        else:
+            print(f"✓ Loaded {len(translated_topics)} translated topics")
+
+    # Merge translated content into topics
+    if language == "vi" and translated_topics:
+        for topic in topics:
+            topic_number = topic["number"]
+            if topic_number in translated_topics:
+                topic["vi_content"] = translated_topics[topic_number]["vi_content"]
 
     print(f"Found {len(topics)} topics to evaluate\n")
 
@@ -184,7 +248,7 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
     results = []
     for i, topic in enumerate(topics, 1):
         print(f"[{i}/{len(topics)}] ", end="")
-        result = await run_single_topic(topic, workflow_service)
+        result = await run_single_topic(topic, workflow_service, language=language)
         results.append(result)
 
     # Calculate average scores
@@ -195,12 +259,19 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
         avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
         avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
         avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+        lang_corr_scored = [r for r in llm_scored if r["llm_scores"].get("language_correction") is not None]
+        avg_l = (
+            sum(r["llm_scores"]["language_correction"] for r in lang_corr_scored) / len(lang_corr_scored)
+            if lang_corr_scored
+            else None
+        )
 
         average_scores = {
             "overall": {
                 "hallucination": round(avg_h, 2),
                 "accuracy": round(avg_a, 2),
                 "clarity": round(avg_c, 2),
+                "language_correction": round(avg_l, 2) if avg_l > 0 else None,
                 "total_scored": len(llm_scored),
             }
         }
@@ -209,11 +280,13 @@ async def run_evaluation(topics_file: str = "data/topics2022.xml"):
     output_dir = Path("benchmark/results")
     output_dir.mkdir(exist_ok=True)
 
-    output_file = output_dir / "matching_results.json"
+    # Include language in filename to avoid overwriting
+    output_file = output_dir / f"matching_results_{language}.json"
 
     output_data = {
         "timestamp": datetime.now().isoformat(),
         "topics_file": topics_file,
+        "language": language,
         "total_topics": len(topics),
         "results": results,
         "average_scores": average_scores,
@@ -273,6 +346,9 @@ def review_results(results_file: str):
                 f"  Accuracy: {llm_scores.get('accuracy', '?')}/5 - {llm_scores.get('accuracy_reasoning', '')[:80]}..."
             )
             print(f"  Clarity: {llm_scores.get('clarity', '?')}/5 - {llm_scores.get('clarity_reasoning', '')[:80]}...")
+            print(
+                f"  Language Correction: {llm_scores.get('language_correction', '?')}/5 - {llm_scores.get('language_correction_reasoning', '')[:80]}..."
+            )
         else:
             print("\n⚠️  No LLM scores available")
 
@@ -287,37 +363,38 @@ def review_results(results_file: str):
         avg_h = sum(r["llm_scores"]["hallucination"] for r in llm_scored) / len(llm_scored)
         avg_a = sum(r["llm_scores"]["accuracy"] for r in llm_scored) / len(llm_scored)
         avg_c = sum(r["llm_scores"]["clarity"] for r in llm_scored) / len(llm_scored)
+        lang_corr_scored = [r for r in llm_scored if r["llm_scores"].get("language_correction") is not None]
+        avg_l = (
+            sum(r["llm_scores"]["language_correction"] for r in lang_corr_scored) / len(lang_corr_scored)
+            if lang_corr_scored
+            else None
+        )
         print(f"  Average Hallucination: {avg_h:.2f}")
         print(f"  Average Accuracy: {avg_a:.2f}")
         print(f"  Average Clarity: {avg_c:.2f}")
+        if avg_l is not None:
+            print(f"  Average Language Correction: {avg_l:.2f}")
         print("=" * 80)
 
 
 def main():
     """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Clinical Trial Matching Evaluation Script",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--lang",
+        "-l",
+        choices=["en", "vi"],
+        help="Language for evaluation: 'en' for English, 'vi' for Vietnamese",
+    )
 
-    if len(sys.argv) > 1 and sys.argv[1] == "review":
-        # Review mode
-        if len(sys.argv) > 2:
-            results_file = sys.argv[2]
-        else:
-            # Find latest results file
-            results_dir = Path("benchmark/results")
-            if not results_dir.exists():
-                print("No results directory found. Run evaluation first.")
-                return
+    args = parser.parse_args()
 
-            results_file = str(results_dir / "matching_results.json")
-            if not Path(results_file).exists():
-                print("No results file found. Run evaluation first.")
-                return
-
-            print(f"Using results: {results_file}\n")
-
-        review_results(results_file)
-    else:
-        # Evaluation mode (always uses LLM judge)
-        asyncio.run(run_evaluation())
+    topics_file = "data/topics2022.xml"
+    # Evaluation mode
+    asyncio.run(run_evaluation(topics_file=topics_file, language=args.lang))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 You are an expert evaluator for clinical trial eligibility checking systems. Your task is to evaluate the quality of eligibility determinations made by a clinical trial assistant.
 
+USER INPUT:
+{user_input}
+
 PATIENT PROFILE:
 {patient_profile}
 
@@ -15,7 +18,7 @@ GROUND TRUTH LABEL:
 WORKFLOW ANSWER:
 {workflow_answer}
 
-Evaluate the workflow's eligibility determination on three criteria (1-5 scale, where 5 is BEST and 1 is WORST):
+Evaluate the workflow's eligibility determination on four criteria (1-5 scale, where 5 is BEST and 1 is WORST):
 
 1. HALLUCINATION (1-5 scale, 5=BEST, 1=WORST):
    - 5: All information is grounded in the provided patient profile and trial eligibility criteria, no made-up claims
@@ -38,6 +41,13 @@ Evaluate the workflow's eligibility determination on three criteria (1-5 scale, 
    - 2: Somewhat confusing or poorly structured
    - 1: Very confusing, hard to understand, poorly organized
 
+4. LANGUAGE_CORRECTION (1-5 scale, 5=BEST, 1=WORST):
+   - 5: Response language perfectly matches the user input language (e.g., if user wrote in Spanish, response is in Spanish)
+   - 4: Response language mostly matches user input language with minor inconsistencies
+   - 3: Response language partially matches user input language but has some language mixing or inconsistencies
+   - 2: Response language does not match user input language (e.g., user wrote in Spanish but response is in English)
+   - 1: Response language completely mismatches user input language or is in wrong language entirely
+
 Note: The accuracy score should consider both whether the eligibility determination (Likely Eligible / Not Eligible / Needs Confirmation) aligns with the ground truth label, and whether the reasoning provided is accurate based on the patient profile and trial criteria.
 
 Provide your evaluation as JSON:
@@ -47,10 +57,12 @@ Provide your evaluation as JSON:
     "accuracy": <score 1-5, where 5 is BEST (correct and matches ground truth) and 1 is WORST (clearly wrong)>,
     "accuracy_reasoning": "<brief explanation - note if determination matches ground truth>",
     "clarity": <score 1-5, where 5 is BEST (very clear) and 1 is WORST (very confusing)>,
-    "clarity_reasoning": "<brief explanation>"
+    "clarity_reasoning": "<brief explanation>",
+    "language_correction": <score 1-5, where 5 is BEST (perfect language match) and 1 is WORST (complete language mismatch)>,
+    "language_correction_reasoning": "<brief explanation - note the languages of user input and response>"
 }}
 
-CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the determination has no hallucinations, score hallucination as 5. If it's correct and matches ground truth, score accuracy as 5. If it's very clear, score clarity as 5.
+CRITICAL: Remember that 5 is the BEST score and 1 is the WORST score. If the determination has no hallucinations, score hallucination as 5. If it's correct and matches ground truth, score accuracy as 5. If it's very clear, score clarity as 5. If the response language perfectly matches the user input language, score language_correction as 5.
 
-Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided patient profile and trial information. Base accuracy scores on both correctness of the determination and accuracy of the reasoning.
+Be objective and critical. Base hallucination scores strictly on whether claims are supported by the provided patient profile and trial information. Base accuracy scores on both correctness of the determination and accuracy of the reasoning. Base language_correction scores on whether the response language matches the user input language.
 
