@@ -1,0 +1,231 @@
+{
+  "experiment": "eligibility_check",
+  "source_files": {
+    "topics": "/Users/quyen.nguyen/Personal/uit/trec_2023/topics2023.xml",
+    "qrels": "data/qrels2022.txt"
+  },
+  "label_counts": {
+    "0": 17,
+    "1": 17,
+    "2": 16
+  },
+  "total_samples": 36,
+  "samples": [
+    {
+      "topic_number": "37",
+      "trial_id": "NCT00394147",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, HbA1c: 4.5, glucose: 95, BMI: 28, insulin: no, metformin: 5 ml, other anti-diabetic drugs: thiazolidinedione, diet restrictions: low-calorie, exercise: walk 2 miles per week, ketoacidosis history: yes, comorbidities: hypertension, thyroid disorder, hospitalization events: never"
+    },
+    {
+      "topic_number": "8",
+      "trial_id": "NCT00399542",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: no, age: 12yo, proficient languages: English, Spanish, SSASI: 12, HAM-A: 25, HAM-D: 14, suicidal ideation: no, dementia: no"
+    },
+    {
+      "topic_number": "2",
+      "trial_id": "NCT03638830",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: pigmentary, intraocular pressure: 15 mmHg, visual field: normal, visual acuity: 20/50, prior cataract surgery: no, prior LASIK surgery: yes, comorbid ocular diseases: macular degeneration"
+    },
+    {
+      "topic_number": "17",
+      "trial_id": "NCT00760240",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: stage III, HER2: negative, hormone receptors: ER+, PR-, prior chemotherapy: neoadjuvant chemotherapy, prior radiotherapy: stereotactic radiotherapy, prior mastectomy: yes, surgery-related therapy: neoadjuvant chemotherapy, performance status: ECOG 2"
+    },
+    {
+      "topic_number": "15",
+      "trial_id": "NCT04139187",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 55%, GOLD stage: early, exacerbations: none, COPD treatments: none, smoking history: none, lung comorbidities: none, other comorbidities: none"
+    },
+    {
+      "topic_number": "14",
+      "trial_id": "NCT00001291",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 72%, GOLD stage: II, exacerbations: first two weeks ago, COPD treatments: steroids, smoking history: none, lung comorbidities: none, other comorbidities: glaucoma"
+    },
+    {
+      "topic_number": "9",
+      "trial_id": "NCT01660672",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, age: adult, proficient languages: English, Dutch, HAM-A: 18, PHQ-9: 22, HAM-D: 24, GAD-7: 12, suicidal ideation: yes, dementia: no"
+    },
+    {
+      "topic_number": "7",
+      "trial_id": "NCT02995538",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, age: 25 years old, proficient languages: English, Swedish, PHQ-9: 18, HAM-D: 19, GAD-7: 20, Beck Depression Inventory: 12, suicidal ideation: yes, dementia: no"
+    },
+    {
+      "topic_number": "40",
+      "trial_id": "NCT00243386",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, HbA1c: 6.3, glucose: 115 fasting blood sugar, BMI: 40, insulin: no, metformin: 8.5 mL, other anti-diabetic drugs: no, diet restrictions: low-calorie, exercise: no, comorbidities: chronic kidney disease, hospitalization events: never"
+    },
+    {
+      "topic_number": "31",
+      "trial_id": "NCT03314441",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: SS, blood transfusion: 1 week ago, hemoglobin: 5.8 g/dL, last vaso occlusive crisis: 2 months ago, stroke history: never"
+    },
+    {
+      "topic_number": "6",
+      "trial_id": "NCT03360331",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: yes, age: 39, proficient languages: English, SSASI: 6, HAM-A: 20, PHQ-9: 7, HAM-D: 23, suicidal ideation: yes, dementia: no"
+    },
+    {
+      "topic_number": "33",
+      "trial_id": "NCT04806711",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: SB+, blood transfusion: 3 weeks ago, hemoglobin: 10.5, last vaso occlusive crisis: 6 months ago, stroke history: never"
+    },
+    {
+      "topic_number": "24",
+      "trial_id": "NCT02518087",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: positive on rapid test only, symptoms: headache, fatigue, hospitalization: no, ventilation: no, vaccination status: unvaccinated, oxygen saturation: 98%, comorbid respiratory diseases: asthma"
+    },
+    {
+      "topic_number": "3",
+      "trial_id": "NCT00812630",
+      "ground_truth_label": 0,
+      "patient_profile": "definitive diagnosis: uveitic glaucoma, intraocular pressure: 28 mmHg, visual field: early field damage, visual acuity: 20/30, prior cataract surgery: no, prior LASIK surgery: no, comorbid ocular diseases: macular edema"
+    },
+    {
+      "topic_number": "2",
+      "trial_id": "NCT00128726",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: pigmentary, intraocular pressure: 15 mmHg, visual field: normal, visual acuity: 20/50, prior cataract surgery: no, prior LASIK surgery: yes, comorbid ocular diseases: macular degeneration"
+    },
+    {
+      "topic_number": "2",
+      "trial_id": "NCT03665779",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: pigmentary, intraocular pressure: 15 mmHg, visual field: normal, visual acuity: 20/50, prior cataract surgery: no, prior LASIK surgery: yes, comorbid ocular diseases: macular degeneration"
+    },
+    {
+      "topic_number": "11",
+      "trial_id": "NCT00564629",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 85%, GOLD stage: III, exacerbations: three in past year, COPD treatments: bronchodilator, steroids, smoking history: 5 cigarettes/day until stopping 2 years ago, lung comorbidities: interstitial lung disease, other comorbidities: hypertension"
+    },
+    {
+      "topic_number": "11",
+      "trial_id": "NCT04350762",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 85%, GOLD stage: III, exacerbations: three in past year, COPD treatments: bronchodilator, steroids, smoking history: 5 cigarettes/day until stopping 2 years ago, lung comorbidities: interstitial lung disease, other comorbidities: hypertension"
+    },
+    {
+      "topic_number": "39",
+      "trial_id": "NCT01465568",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: yes, HbA1c: 5.5, glucose: 100, BMI: 32, insulin: no, metformin: 5 ML, other anti-diabetic drugs: no, diet restrictions: keto diet, exercise: jog 2 miles per day, ketoacidosis history: yes, comorbidities: hypertension, hospitalization events: never"
+    },
+    {
+      "topic_number": "1",
+      "trial_id": "NCT03933618",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: primary open angle glaucoma, visual field: moderate field damage, visual acuity: 0.3, prior cataract surgery: no, prior LASIK surgery: no, comorbid ocular diseases: corneal edema"
+    },
+    {
+      "topic_number": "10",
+      "trial_id": "NCT01768598",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: yes, age: 58 y/o, proficient languages: English, Turkish, HAM-A: 12, HAM-D: 19, GAD-7: 9, Beck Depression Inventory: 8, suicidal ideation: no, dementia: yes"
+    },
+    {
+      "topic_number": "32",
+      "trial_id": "NCT03722810",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: SC, blood transfusion: never, hemoglobin: 8.7 g/dl, last vaso occlusive crisis: 5 in last 12 months, stroke history: stroke 12 years ago"
+    },
+    {
+      "topic_number": "11",
+      "trial_id": "NCT01040455",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 85%, GOLD stage: III, exacerbations: three in past year, COPD treatments: bronchodilator, steroids, smoking history: 5 cigarettes/day until stopping 2 years ago, lung comorbidities: interstitial lung disease, other comorbidities: hypertension"
+    },
+    {
+      "topic_number": "35",
+      "trial_id": "NCT00461370",
+      "ground_truth_label": 1,
+      "patient_profile": "definitive diagnosis: SB0, blood transfusion: never, hemoglobin: 7.5 g/dL, last vaso occlusive crisis: 2 weeks ago, stroke history: never"
+    },
+    {
+      "topic_number": "14",
+      "trial_id": "NCT02403687",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 72%, GOLD stage: II, exacerbations: first two weeks ago, COPD treatments: steroids, smoking history: none, lung comorbidities: none, other comorbidities: glaucoma"
+    },
+    {
+      "topic_number": "1",
+      "trial_id": "NCT01133548",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: primary open angle glaucoma, visual field: moderate field damage, visual acuity: 0.3, prior cataract surgery: no, prior LASIK surgery: no, comorbid ocular diseases: corneal edema"
+    },
+    {
+      "topic_number": "39",
+      "trial_id": "NCT03125590",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, HbA1c: 5.5, glucose: 100, BMI: 32, insulin: no, metformin: 5 ML, other anti-diabetic drugs: no, diet restrictions: keto diet, exercise: jog 2 miles per day, ketoacidosis history: yes, comorbidities: hypertension, hospitalization events: never"
+    },
+    {
+      "topic_number": "9",
+      "trial_id": "NCT01031043",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, age: adult, proficient languages: English, Dutch, HAM-A: 18, PHQ-9: 22, HAM-D: 24, GAD-7: 12, suicidal ideation: yes, dementia: no"
+    },
+    {
+      "topic_number": "37",
+      "trial_id": "NCT03880513",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, HbA1c: 4.5, glucose: 95, BMI: 28, insulin: no, metformin: 5 ml, other anti-diabetic drugs: thiazolidinedione, diet restrictions: low-calorie, exercise: walk 2 miles per week, ketoacidosis history: yes, comorbidities: hypertension, thyroid disorder, hospitalization events: never"
+    },
+    {
+      "topic_number": "22",
+      "trial_id": "NCT01120626",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: confirmed by PCR, symptoms: fever, headache, body pains, hospitalization: yes, ventilation: yes, vaccination status: unvaccinated, oxygen saturation: 96%, comorbid respiratory diseases: bronchiectasis"
+    },
+    {
+      "topic_number": "20",
+      "trial_id": "NCT00471692",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, HER2: negative, prior chemotherapy: no, prior radiotherapy: no, prior mastectomy: no, performance status: ECOG 1"
+    },
+    {
+      "topic_number": "14",
+      "trial_id": "NCT02290210",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 72%, GOLD stage: II, exacerbations: first two weeks ago, COPD treatments: steroids, smoking history: none, lung comorbidities: none, other comorbidities: glaucoma"
+    },
+    {
+      "topic_number": "9",
+      "trial_id": "NCT00080275",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, age: adult, proficient languages: English, Dutch, HAM-A: 18, PHQ-9: 22, HAM-D: 24, GAD-7: 12, suicidal ideation: yes, dementia: no"
+    },
+    {
+      "topic_number": "11",
+      "trial_id": "NCT01360515",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, FEV1: 85%, GOLD stage: III, exacerbations: three in past year, COPD treatments: bronchodilator, steroids, smoking history: 5 cigarettes/day until stopping 2 years ago, lung comorbidities: interstitial lung disease, other comorbidities: hypertension"
+    },
+    {
+      "topic_number": "39",
+      "trial_id": "NCT03882853",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: yes, HbA1c: 5.5, glucose: 100, BMI: 32, insulin: no, metformin: 5 ML, other anti-diabetic drugs: no, diet restrictions: keto diet, exercise: jog 2 miles per day, ketoacidosis history: yes, comorbidities: hypertension, hospitalization events: never"
+    },
+    {
+      "topic_number": "19",
+      "trial_id": "NCT01529242",
+      "ground_truth_label": 2,
+      "patient_profile": "definitive diagnosis: stage IV, HER2: positive, hormone receptors: PR positive, prior chemotherapy: yes, prior radiotherapy: yes, prior mastectomy: yes, surgery-related therapy: neoadjuvant chemotherapy, performance status: ECOG 3, Karnofsky 50%"
+    }
+  ]
+}

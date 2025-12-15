@@ -1,0 +1,29 @@
+{
+  "experiment": "translate_terms",
+  "total_queries_en": 10,
+  "total_queries_vi": 10,
+  "queries_en": [
+    "What does 'progression-free survival' mean?",
+    "Explain EGFR mutation",
+    "What do these terms mean: adjuvant therapy and metastasis?",
+    "What is chemotherapy?",
+    "Explain what 'overall survival' means",
+    "What does 'biopsy' mean in cancer diagnosis?",
+    "Can you explain what 'tumor marker' means?",
+    "What is the meaning of 'immunotherapy'?",
+    "What does 'staging' mean in cancer?",
+    "Explain what 'remission' means in medical terms"
+  ],
+  "queries_vi": [
+    "'Progression-free survival' có nghĩa là gì?",
+    "Giải thích đột biến EGFR",
+    "Các thuật ngữ này có nghĩa là gì: liệu pháp bổ trợ và di căn?",
+    "Hóa trị là gì?",
+    "Giải thích 'overall survival' có nghĩa là gì",
+    "'Biopsy' có nghĩa là gì trong chẩn đoán ung thư?",
+    "Bạn có thể giải thích 'tumor marker' có nghĩa là gì không?",
+    "Ý nghĩa của 'immunotherapy' là gì?",
+    "'Staging' có nghĩa là gì trong ung thư?",
+    "Giải thích 'remission' có nghĩa là gì trong thuật ngữ y tế"
+  ]
+}

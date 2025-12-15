@@ -1,0 +1,17 @@
+{
+  "experiment": "explain_criteria",
+  "source": "fallback",
+  "total_trials": 10,
+  "trial_ids": [
+    "NCT02132585",
+    "NCT03341637",
+    "NCT00480792",
+    "NCT01079793",
+    "NCT01670110",
+    "NCT00966875",
+    "NCT03087305",
+    "NCT04888793",
+    "NCT01815333",
+    "NCT00399217"
+  ]
+}

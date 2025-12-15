@@ -1,0 +1,83 @@
+{
+  "experiment": "compare_trials",
+  "source_file": "data/qrels2022.txt",
+  "num_topics": 10,
+  "total_samples": 10,
+  "samples": [
+    {
+      "topic_number": "41",
+      "trial_ids": [
+        "NCT00305539",
+        "NCT00076726",
+        "NCT00556439"
+      ]
+    },
+    {
+      "topic_number": "8",
+      "trial_ids": [
+        "NCT01934959",
+        "NCT02342457"
+      ]
+    },
+    {
+      "topic_number": "2",
+      "trial_ids": [
+        "NCT03264170",
+        "NCT01261026"
+      ]
+    },
+    {
+      "topic_number": "18",
+      "trial_ids": [
+        "NCT02094235",
+        "NCT03719742",
+        "NCT02404493"
+      ]
+    },
+    {
+      "topic_number": "16",
+      "trial_ids": [
+        "NCT01074554",
+        "NCT03926832"
+      ]
+    },
+    {
+      "topic_number": "15",
+      "trial_ids": [
+        "NCT01523964",
+        "NCT00847379",
+        "NCT01380964"
+      ]
+    },
+    {
+      "topic_number": "9",
+      "trial_ids": [
+        "NCT00419796",
+        "NCT00377208",
+        "NCT03125733"
+      ]
+    },
+    {
+      "topic_number": "7",
+      "trial_ids": [
+        "NCT02380729",
+        "NCT04184817"
+      ]
+    },
+    {
+      "topic_number": "35",
+      "trial_ids": [
+        "NCT02524470",
+        "NCT00245921",
+        "NCT04003662"
+      ]
+    },
+    {
+      "topic_number": "6",
+      "trial_ids": [
+        "NCT02024113",
+        "NCT00172835"
+      ]
+    }
+  ]
+}

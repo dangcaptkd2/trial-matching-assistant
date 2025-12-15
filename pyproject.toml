@@ -45,5 +45,6 @@ line-ending = "lf"
 disable = [
     "broad-exception-caught",
     "logging-fstring-interpolation",
+    "line-too-long"
 ]
 
