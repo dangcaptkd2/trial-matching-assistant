@@ -21,7 +21,9 @@ def format_response(result: dict) -> str:
         return "No response generated."
 
 
-async def run_single_topic_comparison(topic: dict, workflow_service: WorkflowService, language: str = "en") -> dict:
+async def run_single_topic_comparison(
+    topic: dict, workflow_service: WorkflowService, language: str = "en", evaluate_chatgpt: bool = True
+) -> dict:
     """Run both ChatGPT and workflow for a single topic and capture results."""
     topic_number = topic["number"]
 
@@ -35,14 +37,29 @@ async def run_single_topic_comparison(topic: dict, workflow_service: WorkflowSer
 
     print(f"Running topic {topic_number} ({language})...", end=" ", flush=True)
 
-    # Run ChatGPT
-    chatgpt_start = datetime.now()
-    chatgpt_response_text = await gpt_invoke(query)
-    chatgpt_elapsed = (datetime.now() - chatgpt_start).total_seconds()
+    # Run ChatGPT (only if flag is enabled)
+    chatgpt_response_text = ""
+    chatgpt_trial_ids = []
+    chatgpt_trial_count = 0
+    chatgpt_elapsed = 0.0
+    chatgpt_llm_scores = {}
 
-    # Extract trial IDs from ChatGPT response
-    chatgpt_trial_ids = extract_trial_ids_from_text(chatgpt_response_text)
-    chatgpt_trial_count = len(chatgpt_trial_ids)
+    if evaluate_chatgpt:
+        chatgpt_start = datetime.now()
+        chatgpt_response_text = await gpt_invoke(query)
+        chatgpt_elapsed = (datetime.now() - chatgpt_start).total_seconds()
+
+        # Extract trial IDs from ChatGPT response
+        chatgpt_trial_ids = extract_trial_ids_from_text(chatgpt_response_text)
+        chatgpt_trial_count = len(chatgpt_trial_ids)
+
+        # Run LLM evaluation for ChatGPT
+        if chatgpt_response_text:
+            chatgpt_llm_scores = await llm_evaluate_response(
+                task=Task.MATCHING_COMPARISON,
+                response=chatgpt_response_text,
+                user_input=query,
+            )
 
     # Run Workflow
     workflow_start = datetime.now()
@@ -61,15 +78,6 @@ async def run_single_topic_comparison(topic: dict, workflow_service: WorkflowSer
     workflow_trial_ids = extract_trial_ids_from_text(workflow_response)
     workflow_trial_count = len(workflow_trial_ids)
 
-    # Run LLM evaluation for ChatGPT
-    chatgpt_llm_scores = {}
-    if chatgpt_response_text:
-        chatgpt_llm_scores = await llm_evaluate_response(
-            task=Task.MATCHING_COMPARISON,
-            response=chatgpt_response_text,
-            user_input=query,
-        )
-
     # Run LLM evaluation for Workflow
     workflow_llm_scores = {}
     if workflow_result_data:
@@ -81,13 +89,6 @@ async def run_single_topic_comparison(topic: dict, workflow_service: WorkflowSer
 
     evaluation_result = {
         "topic_number": topic_number,
-        "chatgpt": {
-            "response": chatgpt_response_text,
-            "trial_ids_extracted": chatgpt_trial_ids,
-            "trial_count": chatgpt_trial_count,
-            "execution_time": round(chatgpt_elapsed, 2),
-            "llm_scores": chatgpt_llm_scores,
-        },
         "workflow": {
             "response": workflow_response,
             "trial_ids": workflow_trial_ids,
@@ -98,22 +99,41 @@ async def run_single_topic_comparison(topic: dict, workflow_service: WorkflowSer
         "language": language,
     }
 
+    # Add ChatGPT results only if evaluated
+    if evaluate_chatgpt:
+        evaluation_result["chatgpt"] = {
+            "response": chatgpt_response_text,
+            "trial_ids_extracted": chatgpt_trial_ids,
+            "trial_count": chatgpt_trial_count,
+            "execution_time": round(chatgpt_elapsed, 2),
+            "llm_scores": chatgpt_llm_scores,
+        }
+
     # Print summary
-    print(
-        f"✓ [ChatGPT: {chatgpt_trial_count} trials, {chatgpt_elapsed:.1f}s] "
-        f"[Workflow: {workflow_trial_count} trials, {workflow_elapsed:.1f}s]"
-    )
+    if evaluate_chatgpt:
+        print(
+            f"✓ [ChatGPT: {chatgpt_trial_count} trials, {chatgpt_elapsed:.1f}s] "
+            f"[Workflow: {workflow_trial_count} trials, {workflow_elapsed:.1f}s]"
+        )
+    else:
+        print(f"✓ [Workflow: {workflow_trial_count} trials, {workflow_elapsed:.1f}s]")
 
     return evaluation_result
 
 
 async def run_evaluation(
-    dataset_file: str, language: str = "en", output_file_name: str = "matching_comparison_results.json"
+    dataset_file: str,
+    language: str = "en",
+    output_file_name: str = "matching_comparison_results.json",
+    evaluate_chatgpt: bool = True,
 ):
     """Run comparison evaluation on all topics."""
     print("=" * 80)
     print("Clinical Trial Matching Comparison Evaluation")
-    print("ChatGPT vs Workflow")
+    if evaluate_chatgpt:
+        print("ChatGPT vs Workflow")
+    else:
+        print("Workflow Only")
     print(f"Language: {language.upper()}")
     print("(with LLM-as-Judge automatic scoring)")
     print("=" * 80)
@@ -138,33 +158,35 @@ async def run_evaluation(
     results = []
     for i, topic in enumerate(topics, 1):
         print(f"[{i}/{len(topics)}] ", end="")
-        result = await run_single_topic_comparison(topic, workflow_service, language=language)
+        result = await run_single_topic_comparison(
+            topic, workflow_service, language=language, evaluate_chatgpt=evaluate_chatgpt
+        )
         results.append(result)
 
     # Calculate average scores
-    chatgpt_scored = [r for r in results if r.get("chatgpt", {}).get("llm_scores", {}).get("depth") is not None]
-    workflow_scored = [r for r in results if r.get("workflow", {}).get("llm_scores", {}).get("depth") is not None]
-
     average_scores = {}
 
-    if chatgpt_scored:
-        chatgpt_avg = {}
-        metrics = ["trial_id_count", "depth", "relevance", "clarity", "completeness"]
-        for metric in metrics:
-            scores = [
-                r["chatgpt"]["llm_scores"].get(metric)
-                for r in chatgpt_scored
-                if r["chatgpt"]["llm_scores"].get(metric) is not None
-            ]
-            if scores:
-                chatgpt_avg[metric] = round(sum(scores) / len(scores), 2)
-        chatgpt_avg["trial_count_avg"] = round(sum(r["chatgpt"]["trial_count"] for r in results) / len(results), 2)
-        chatgpt_avg["execution_time_avg"] = round(
-            sum(r["chatgpt"]["execution_time"] for r in results) / len(results), 2
-        )
-        chatgpt_avg["total_scored"] = len(chatgpt_scored)
-        average_scores["chatgpt"] = chatgpt_avg
+    if evaluate_chatgpt:
+        chatgpt_scored = [r for r in results if r.get("chatgpt", {}).get("llm_scores", {}).get("depth") is not None]
+        if chatgpt_scored:
+            chatgpt_avg = {}
+            metrics = ["trial_id_count", "depth", "relevance", "clarity", "completeness"]
+            for metric in metrics:
+                scores = [
+                    r["chatgpt"]["llm_scores"].get(metric)
+                    for r in chatgpt_scored
+                    if r["chatgpt"]["llm_scores"].get(metric) is not None
+                ]
+                if scores:
+                    chatgpt_avg[metric] = round(sum(scores) / len(scores), 2)
+            chatgpt_avg["trial_count_avg"] = round(sum(r["chatgpt"]["trial_count"] for r in results) / len(results), 2)
+            chatgpt_avg["execution_time_avg"] = round(
+                sum(r["chatgpt"]["execution_time"] for r in results) / len(results), 2
+            )
+            chatgpt_avg["total_scored"] = len(chatgpt_scored)
+            average_scores["chatgpt"] = chatgpt_avg
 
+    workflow_scored = [r for r in results if r.get("workflow", {}).get("llm_scores", {}).get("depth") is not None]
     if workflow_scored:
         workflow_avg = {}
         metrics = ["trial_id_count", "depth", "relevance", "clarity", "completeness"]
@@ -229,12 +251,25 @@ def main():
         default="vi",
         help="Language for evaluation: 'en' for English, 'vi' for Vietnamese",
     )
+    parser.add_argument(
+        "--evaluate-chatgpt",
+        action="store_true",
+        default=False,
+        help="Enable ChatGPT evaluation. If not set, only workflow will be evaluated.",
+    )
 
     args = parser.parse_args()
 
     dataset_file = "benchmark/datasets/01_matching_dataset.json"
-    output_file_name = f"01_matching_comparison_results_{args.lang}.json"
-    asyncio.run(run_evaluation(dataset_file=dataset_file, language=args.lang, output_file_name=output_file_name))
+    output_file_name = f"medgemma-4b-it/01_matching_comparison_results_{args.lang}.json"
+    asyncio.run(
+        run_evaluation(
+            dataset_file=dataset_file,
+            language=args.lang,
+            output_file_name=output_file_name,
+            evaluate_chatgpt=args.evaluate_chatgpt,
+        )
+    )
 
 
 if __name__ == "__main__":

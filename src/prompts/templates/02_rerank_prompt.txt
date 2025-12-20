@@ -15,5 +15,7 @@ Rate the match on a scale of 0.0 to 1.0 where:
 Respond ONLY with a JSON object in this exact format:
 {{
     "score": <float between 0.0 and 1.0>,
-    "reasoning": "<brief explanation of why this score>"
+    "reasoning": "<VERY BRIEF explanation in 1-2 sentences, maximum 50 words. Be concise and direct.>"
 }}
+
+CRITICAL: Keep the reasoning field SHORT. Maximum 50 words. Do not write long explanations.

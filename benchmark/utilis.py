@@ -411,49 +411,5 @@ def extract_trial_ids_from_text(text: str) -> list[str]:
     return unique_ids
 
 
-async def extract_trial_ids_with_llm(text: str) -> list[str]:
-    """
-    Extract clinical trial IDs from text using LLM for more robust extraction.
-    Falls back to regex if LLM extraction fails.
-
-    Args:
-        text: Text response that may contain trial IDs
-
-    Returns:
-        List of unique trial IDs found (NCT format, uppercase)
-    """
-    # First try regex extraction
-    regex_ids = extract_trial_ids_from_text(text)
-
-    # If we found IDs with regex, return them
-    if regex_ids:
-        return regex_ids
-
-    # Otherwise, try LLM extraction for edge cases
-    try:
-        extraction_prompt = f"""Extract all clinical trial IDs (NCT format: NCT followed by 8 digits) from the following text.
-Return only the trial IDs, one per line, in the format NCT########.
-If no trial IDs are found, return "NONE".
-
-Text:
-{text}
-
-Trial IDs:"""
-
-        llm = ChatOpenAI(model=settings.llm_model, temperature=0.0)
-        response = await llm.ainvoke([HumanMessage(content=extraction_prompt)])
-        response_text = response.content.strip()
-
-        if response_text.upper() == "NONE" or not response_text:
-            return []
-
-        # Extract IDs from LLM response
-        ids = extract_trial_ids_from_text(response_text)
-        return ids
-    except Exception:
-        # Fall back to regex if LLM fails
-        return regex_ids
-
-
 if __name__ == "__main__":
     print("hello")
