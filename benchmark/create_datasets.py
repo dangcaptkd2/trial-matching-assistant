@@ -14,7 +14,7 @@ from benchmark.xml_data_utils import (
     sample_trials_for_comparison,
 )
 from src.config.settings import settings
-from src.services.search import ElasticsearchTrialSearcher
+from src.services.es_search import ElasticsearchTrialSearcher
 
 # Trial IDs for summarization dataset (from 02_trial_summarize.py)
 TRIAL_IDS = [

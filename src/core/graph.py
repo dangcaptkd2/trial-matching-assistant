@@ -15,7 +15,7 @@ from src.core.schemas import (
 )
 from src.core.state import GraphState
 from src.prompts import prompts
-from src.services.search import ElasticsearchTrialSearcher
+from src.services.es_search import ElasticsearchTrialSearcher
 
 # Initialize ES searcher
 es_searcher = ElasticsearchTrialSearcher(index_name=settings.es_index_name)

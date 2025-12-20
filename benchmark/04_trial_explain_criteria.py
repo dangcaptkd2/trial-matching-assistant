@@ -11,7 +11,7 @@ from pathlib import Path
 from benchmark.utilis import Task, llm_evaluate_response
 from src.api.services.workflow import WorkflowService
 from src.config.settings import settings
-from src.services.search import ElasticsearchTrialSearcher
+from src.services.es_search import ElasticsearchTrialSearcher
 
 
 def format_response(result: dict) -> str:
