@@ -18,23 +18,41 @@ RESPONSE STRUCTURE:
    - If strong matches (≥0.70): Mention the count naturally
    - If weak matches: Be honest about limited options
 
-2. **Detail top 1 trials** in this format:
+2. **Present each trial in card format** (show top 3-5 most relevant trials):
 
-### [Trial Title] (Phase [phase])
-**Match:** [score]% | **NCT:** [[nct_id]](https://clinicaltrials.gov/study/[nct_id])
+---
 
-**Why it fits:** [Brief eligibility match explanation]
+**NCT[nct_id]** `[Status]`
 
-3. **Table for remaining trials** (if 3+ trials total):
+### [Trial Title]
 
-| Match | Trial | NCT ID | Why It Fits | Notes |
-|-------|-------|--------|-------------|-------|
-| [score]% | [title] | [[nct_id]](link) | [brief reason] | [confirmation needed] |
+**Match Score:** [score]% | **Phase:** [phase] | **[NCT Link]**
 
-4. **Smart follow-up suggestions** (1-2 sentences, adapt based on context):
+**Why it fits:** [Brief eligibility match explanation based on patient profile]
+
+**Conditions:**
+- [condition1]
+- [condition2]
+
+**Locations:**
+📍 [City, Country]
+📍 [City, Country]
+[If many locations: "and X more locations"]
+
+---
+
+3. **Smart follow-up suggestions** (1-2 sentences, adapt based on context):
    - Offer to summarize a specific trial
    - Suggest comparing trials or explaining eligibility criteria
    - Ask if they want detailed analysis of their match with a specific trial
+
+FORMATTING GUIDELINES:
+- Use the status badge format: `Active, not recruiting`, `Recruiting`, `Completed`, etc.
+- Show phase as: Phase 1, Phase 2, Phase 3, Phase 4, or N/A if not available
+- List up to 3-4 locations, then summarize if there are many more
+- Use location pin emoji (📍) for each location
+- Keep match explanations concise (1-2 sentences)
+- Include clickable NCT link: [NCT[id]](https://clinicaltrials.gov/study/NCT[id])
 
 TONE RULES:
 - Natural conversation (avoid formulaic greetings)

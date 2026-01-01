@@ -34,12 +34,12 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = True
 
     # LLM Settings
-    # llm_model: str = "gpt-4.1-nano"
-    # llm_model_url: Optional[str] = "https://api.openai.com/v1"
-    llm_model: str = "google/medgemma-4b-it"
-    llm_model_url: Optional[str] = (
-        "https://nb-29498343-695e-406f-afbb-8c20db43d17e-8000-sea1.notebook.console.greennode.ai/v1"
-    )
+    llm_model: str = "gpt-4.1-nano"
+    llm_model_url: Optional[str] = "https://api.openai.com/v1"
+    # llm_model: str = "google/medgemma-4b-it"
+    # llm_model_url: Optional[str] = (
+    #     "https://nb-29498343-695e-406f-afbb-8c20db43d17e-8000-sea1.notebook.console.greennode.ai/v1"
+    # )
     temperature: float = 0.0
     llm_judge_model: str = "gpt-5.1"
 

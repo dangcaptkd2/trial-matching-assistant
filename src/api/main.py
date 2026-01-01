@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.api.routes import chat, conversations, health, models
+from chainlit.utils import mount_chainlit
 
 
 @asynccontextmanager
@@ -40,6 +41,9 @@ app.include_router(conversations.router, prefix="/api", tags=["conversations"])
 # OpenAI-compatible endpoints
 app.include_router(chat.router, prefix="/v1", tags=["openai-chat"])
 app.include_router(models.router, prefix="/v1", tags=["openai-models"])
+
+# Mount Chainlit UI
+mount_chainlit(app=app, target="src/ui/chainlit_app.py", path="/demo")
 
 
 @app.get("/")
