@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # Elasticsearch Settings
     es_index_name: str = "trec2023_ctnlp"
 
+    # PostgreSQL Settings
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_database: str = "aact"
+    postgres_user: str = "postgres"
+    postgres_password: str = "postgres"
+    postgres_schema: str = "ctgov"
+
     # API Settings
     api_host: str = "0.0.0.0"
     api_port: int = 8000
