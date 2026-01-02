@@ -1,0 +1,29 @@
+# AACT Data Pipeline Configuration
+
+# AACT Download Settings
+aact:
+  base_url: "https://aact.ctti-clinicaltrials.org/static/static_db_copies/daily"
+  download_dir: "./data/downloads"
+  retention_days: 7  # Keep dump files for this many days
+
+# PostgreSQL Settings
+postgres:
+  container_name: "postgres_db"
+  database: "aact"
+  user: "postgres"
+  password: "postgres"
+  host: "localhost"
+  port: 5432
+
+# Elasticsearch Settings
+elasticsearch:
+  index_name: "trec2023_sql"
+  batch_size: 50000
+  recreate_index: false  # Set to true to drop and recreate index
+
+# Pipeline Settings
+pipeline:
+  log_dir: "./logs"
+  notify_on_failure: true
+  notify_on_success: false
+  email: null  # Optional: email for notifications

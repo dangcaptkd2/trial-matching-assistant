@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # API Keys and URLs
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = None
-    elasticsearch_url: Optional[str] = None
+    elasticsearch_url: Optional[str] = "http://localhost:9200"
 
     # LangSmith Settings
     langchain_api_key: Optional[str] = None
@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     # Elasticsearch Settings
     es_index_name: str = "trec2023_ctnlp"
+    # es_index_name:str = "aact"
 
     # PostgreSQL Settings
     postgres_host: str = "localhost"
