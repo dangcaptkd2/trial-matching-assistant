@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     llm_judge_model: str = "gpt-5.1"
 
     # Elasticsearch Settings
-    es_index_name: str = "trec2023_ctnlp"
-    # es_index_name:str = "aact"
+    # es_index_name: str = "trec2023_ctnlp"
+    es_index_name:str = "aact"
 
     # PostgreSQL Settings
     postgres_host: str = "localhost"

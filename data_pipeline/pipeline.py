@@ -115,6 +115,43 @@ def run_import(dmp_file: Path) -> bool:
         return False
 
 
+
+
+def run_materialized_view_refresh() -> bool:
+    """
+    Create or refresh materialized view for optimized Elasticsearch indexing.
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    logger.info("=" * 60)
+    logger.info("STEP 2.5: Creating/Refreshing Materialized View")
+    logger.info("=" * 60)
+    
+    # Try to refresh first (for incremental updates)
+    cmd_refresh = ["python", "data_pipeline/create_materialized_view.py", "--refresh"]
+    
+    try:
+        result = subprocess.run(cmd_refresh, check=True, capture_output=True, text=True)
+        logger.info(result.stdout)
+        logger.success("✓ Materialized view refreshed")
+        return True
+    except subprocess.CalledProcessError:
+        # If refresh fails, try to create (first time)
+        logger.info("Materialized view doesn't exist, creating new one...")
+        cmd_create = ["python", "data_pipeline/create_materialized_view.py"]
+        
+        try:
+            result = subprocess.run(cmd_create, check=True, capture_output=True, text=True)
+            logger.info(result.stdout)
+            logger.success("✓ Materialized view created")
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to create materialized view: {e}")
+            logger.error(e.stderr)
+            return False
+
+
 def run_indexing() -> bool:
     """
     Run Elasticsearch indexing step.
@@ -126,7 +163,8 @@ def run_indexing() -> bool:
     logger.info("STEP 3: Indexing to Elasticsearch")
     logger.info("=" * 60)
     
-    cmd = ["python", "data_pipeline/sql2es.py"]
+    # Use optimized script that queries from materialized view
+    cmd = ["python", "data_pipeline/sql2es_optimized.py"]
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -138,6 +176,7 @@ def run_indexing() -> bool:
         logger.error(f"Elasticsearch indexing failed: {e}")
         logger.error(e.stderr)
         return False
+
 
 
 def cleanup_old_files(download_dir: str, retention_days: int):
@@ -263,6 +302,12 @@ def main():
                 sys.exit(1)
         else:
             logger.info("Skipping import step")
+        
+        # Step 2.5: Create/Refresh Materialized View
+        if not args.skip_indexing:  # Only needed if we're going to index
+            if not run_materialized_view_refresh():
+                logger.error("❌ Pipeline failed at materialized view refresh step")
+                sys.exit(1)
         
         # Step 3: Index to Elasticsearch
         if not args.skip_indexing:

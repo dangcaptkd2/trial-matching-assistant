@@ -214,8 +214,8 @@ def fetch_batch(last_nct_id=None, limit=500):
     LIMIT %s;
     """
 
-    # Use an empty string or a very low value for the first batch
-    cursor.execute(query, (last_nct_id or "", limit))
+    # Use NCT00000000 as the initial value (before any real NCT IDs)
+    cursor.execute(query, (last_nct_id or "NCT00000000", limit))
     rows = cursor.fetchall()
     column_names = [desc[0] for desc in cursor.description]
     cursor.close()
@@ -291,8 +291,8 @@ def main():
     logger.info(f"Total trials to process: {total_trials}")
 
     # Process in batches
-    last_nct_id = ""
-    batch_size = 50000
+    last_nct_id = None
+    batch_size = 100
     count = 0
     time_start = time.time()
     while True:

@@ -160,8 +160,8 @@ def get_trials_by_ids(trial_ids: list[str]) -> list[Dict]:
             STRING_AGG(DISTINCT i.intervention_type || ': ' || i.name, E'\n') AS intervention_name,
             STRING_AGG(DISTINCT c.name, E'\n') AS condition_name,
             r.name || ' ' || r.phone || ' ' || r.email AS contact,
-            COUNT(DISTINCT CONCAT_WS(', ', f.city, f.state, f.country)) AS total_sites,
-            STRING_AGG(DISTINCT CONCAT_WS(', ', f.city, f.state, f.country), E'\n') AS sites,
+            COUNT(DISTINCT CONCAT_WS(', ',f.name, f.city, f.state, f.country)) AS total_sites,
+            STRING_AGG(DISTINCT CONCAT_WS(', ', f.name, f.city, f.state, f.country), E'\n') AS sites,
             s.overall_status AS status,
             e.criteria AS eligibility_criteria
         FROM
