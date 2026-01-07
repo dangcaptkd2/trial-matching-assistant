@@ -9,10 +9,7 @@ from langgraph.graph import END, StateGraph
 
 from src.config.settings import settings
 from src.core.memory import get_checkpointer
-from src.core.schemas import (
-    IntentClassification,
-    RerankScore,
-)
+from src.core.schemas import IntentClassification, RerankScore
 from src.core.state import GraphState
 from src.prompts import prompts
 from src.services.es_search import ElasticsearchTrialSearcher
@@ -297,7 +294,7 @@ async def search_clinical_trials_node(state: GraphState) -> GraphState:
         return {"search_results": []}
 
     # Directly call the async function - no need for event loop juggling!
-    search_results = await es_searcher.get_trials_by_text(
+    search_results = await es_searcher.search_trials(
         patient_profile=patient_info,
         top_k=top_k,
         return_fields=[
@@ -401,21 +398,21 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
     reranked_results = []
     for result in scored_results[:10]:  # Limit to top 10
         nct_id = result.get("nct_id", "N/A")
-        
+
         # Get full trial data if available
         trial_full = full_trial_data.get(nct_id, {})
-        
+
         # Extract and format conditions
         conditions = trial_full.get("conditions", [])
         if conditions and None in conditions:
             conditions = [c for c in conditions if c is not None]
         conditions_str = ", ".join(conditions) if conditions else "N/A"
-        
+
         # Group and format locations
         sites_str = trial_full.get("sites", "")
         locations = group_locations(sites_str, max_locations=4)
         locations_str = "; ".join(locations) if locations else "N/A"
-        
+
         reranked_results.append(
             {
                 "nct_id": nct_id,
@@ -455,27 +452,27 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     for i, trial in enumerate(reranked_results[:5], 1):  # Top 5 trials
         trials_text += f"\n{i}. {trial.get('title', 'N/A')}\n"
         trials_text += f"   NCT ID: {trial.get('nct_id', 'N/A')}\n"
-        
+
         # Add status if available
-        status = trial.get('status', 'N/A')
-        if status and status != 'N/A':
+        status = trial.get("status", "N/A")
+        if status and status != "N/A":
             trials_text += f"   Status: {status}\n"
-        
+
         # Add phase if available
-        phase = trial.get('phase', 'N/A')
-        if phase and phase != 'N/A':
+        phase = trial.get("phase", "N/A")
+        if phase and phase != "N/A":
             trials_text += f"   Phase: {phase}\n"
-        
+
         # Add conditions if available
-        conditions = trial.get('conditions', 'N/A')
-        if conditions and conditions != 'N/A':
+        conditions = trial.get("conditions", "N/A")
+        if conditions and conditions != "N/A":
             trials_text += f"   Conditions: {conditions}\n"
-        
+
         # Add locations (first 4, grouped)
-        locations = trial.get('locations', 'N/A')
-        if locations and locations != 'N/A':
+        locations = trial.get("locations", "N/A")
+        if locations and locations != "N/A":
             trials_text += f"   Locations: {locations}\n"
-        
+
         trials_text += f"   Match Score: {trial.get('llm_match_score', 0.0):.2f}\n"
         trials_text += f"   Reasoning: {trial.get('match_reasoning', 'N/A')}\n"
 
@@ -560,7 +557,7 @@ async def clarify_node(state: GraphState) -> GraphState:
         if has_patient_info:
             # User provided patient info but no trial ID - search and show options
             search_query = user_input
-            clarification_search_results = await es_searcher.get_trials_by_text(
+            clarification_search_results = await es_searcher.search_trials(
                 search_query,
                 top_k=5,
                 return_fields=["nct_id", "official_title", "brief_summary"],
@@ -653,7 +650,7 @@ async def fetch_trial_data_node(state: GraphState) -> GraphState:
     # Fetch trials from PostgreSQL by IDs (batch operation)
     try:
         trial_results = await get_trials_by_ids_async(trial_ids)
-        
+
         # Format results to match expected structure
         formatted_results = []
         for trial in trial_results:
@@ -661,42 +658,48 @@ async def fetch_trial_data_node(state: GraphState) -> GraphState:
             conditions = trial.get("conditions", [])
             if conditions and None in conditions:
                 conditions = [c for c in conditions if c is not None]
-            
-            formatted_results.append({
-                "nct_id": trial.get("nct_id", "N/A"),
-                "title": trial.get("title") or trial.get("official_title", "N/A"),
-                "official_title": trial.get("official_title", "N/A"),
-                "phase": trial.get("phase", "N/A"),
-                "status": trial.get("overall_status", "N/A"),
-                "conditions": conditions,
-                "eligibility_criteria": trial.get("eligibility_criteria", ""),
-                "brief_summary": trial.get("brief_summary", ""),
-                "start_date": trial.get("start_date", "N/A"),
-                "completion_date": trial.get("completion_date", "N/A"),
-                "sites": trial.get("sites", ""),  # Location string for grouping
-                "interventions": trial.get("interventions", []),
-                "keywords": trial.get("keywords", []),
-            })
-        
+
+            formatted_results.append(
+                {
+                    "nct_id": trial.get("nct_id", "N/A"),
+                    "title": trial.get("title") or trial.get("official_title", "N/A"),
+                    "official_title": trial.get("official_title", "N/A"),
+                    "phase": trial.get("phase", "N/A"),
+                    "status": trial.get("overall_status", "N/A"),
+                    "conditions": conditions,
+                    "eligibility_criteria": trial.get("eligibility_criteria", ""),
+                    "brief_summary": trial.get("brief_summary", ""),
+                    "start_date": trial.get("start_date", "N/A"),
+                    "completion_date": trial.get("completion_date", "N/A"),
+                    "sites": trial.get("sites", ""),  # Location string for grouping
+                    "interventions": trial.get("interventions", []),
+                    "keywords": trial.get("keywords", []),
+                }
+            )
+
         # Handle missing trials
         fetched_ids = {trial["nct_id"] for trial in formatted_results}
         for trial_id in trial_ids:
             if trial_id not in fetched_ids:
-                formatted_results.append({
-                    "nct_id": trial_id,
-                    "error": f"Trial {trial_id} not found in database",
-                })
-        
+                formatted_results.append(
+                    {
+                        "nct_id": trial_id,
+                        "error": f"Trial {trial_id} not found in database",
+                    }
+                )
+
         return {"trial_data": formatted_results}
-        
+
     except Exception as e:
         # If PostgreSQL fails, return error for all trials
         trial_results = []
         for trial_id in trial_ids:
-            trial_results.append({
-                "nct_id": trial_id,
-                "error": f"Database error: {str(e)}",
-            })
+            trial_results.append(
+                {
+                    "nct_id": trial_id,
+                    "error": f"Database error: {str(e)}",
+                }
+            )
         return {"trial_data": trial_results}
 
 

@@ -31,7 +31,6 @@ env/
 .gitignore
 
 # Documentation
-README.md
 docs/
 
 # Scripts and drafts

@@ -1,4 +1,112 @@
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: clinical-trial-postgres
+    environment:
+      POSTGRES_DB: aact
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"  # Changed to 5433 to avoid conflict with local PostgreSQL
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aact"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - trial-assistant-network
+    restart: unless-stopped
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.16
+    container_name: clinical-trial-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - cluster.name=clinical-trials
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - trial-assistant-network
+    restart: unless-stopped
+
+  # Data Pipeline Initialization (runs once on startup)
+  data-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clinical-trial-data-pipeline
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=aact
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ES_INDEX_NAME=aact
+    volumes:
+      - ./data:/app/data
+      - ./data_pipeline:/app/data_pipeline
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - trial-assistant-network
+    # This runs the data pipeline then exits
+    # Comment out if you don't want to run pipeline on startup
+    # Or run manually: docker-compose run --rm data-pipeline
+    command: >
+      sh -c "
+        echo '🚀 Starting data pipeline...'
+        echo '📥 Step 1: Download AACT data'
+        uv run python data_pipeline/download_aact.py --output-dir /app/data/downloads || echo 'Download failed or skipped'
+        
+        echo '📦 Step 2: Import to PostgreSQL'
+        if ls /app/data/downloads/*.dmp 1> /dev/null 2>&1; then
+          LATEST_DMP=$$(ls -t /app/data/downloads/*.dmp | head -1)
+          echo \"Found dump file: $$LATEST_DMP\"
+          bash data_pipeline/import_aact_data_docker.sh \"$$LATEST_DMP\" || echo 'Import failed or already imported'
+        else
+          echo 'No .dmp file found, skipping import'
+        fi
+        
+        echo '🔄 Step 3: Create/Refresh Materialized View'
+        uv run python data_pipeline/create_materialized_view.py --refresh || \
+        uv run python data_pipeline/create_materialized_view.py || \
+        echo 'Materialized view creation skipped'
+        
+        echo '📊 Step 4: Index to Elasticsearch'
+        uv run python data_pipeline/sql2es_optimized.py || echo 'Indexing failed or skipped'
+        
+        echo '✅ Data pipeline completed!'
+      "
+    profiles:
+      - init  # Only runs when explicitly called with --profile init
+
+  # FastAPI Application
   api:
     build:
       context: .
@@ -11,9 +119,24 @@ services:
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=aact
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ES_INDEX_NAME=aact
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -21,7 +144,12 @@ services:
     networks:
       - trial-assistant-network
 
+volumes:
+  postgres_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
 networks:
   trial-assistant-network:
     driver: bridge
-

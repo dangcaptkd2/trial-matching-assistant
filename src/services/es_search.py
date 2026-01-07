@@ -35,20 +35,14 @@ class ElasticsearchTrialSearcher:
         #     "condition",
         # ]
         self.search_fields = [
-            "brief_title",
-            "official_title",
-            "brief_summary",
-            "detailed_description",
-            "eligibility_criteria",
-            "drug_name",
-            "drug_keywords",
-            "general_keywords",
-            "primary_outcome",
-            "condition",
-            # "gender",
-            # "minimum_age",
-            # "maximum_age",
-            # "intervention_type",
+            "title^3",
+            "official_title^2",
+            "brief_summary^3",
+            "conditions^2",
+            "interventions",
+            "keywords",
+            "mesh_terms_conditions",
+            "mesh_terms_interventions",
         ]
 
     def _prepare_search_text(self, patient_profile: str) -> str:
@@ -59,6 +53,7 @@ class ElasticsearchTrialSearcher:
         self,
         patient_profile: str,
         top_k: int = 20,
+        return_fields: Optional[List[str]] = None,
     ) -> List[Dict]:
         """
         Search for clinical trials matching patient profile.
@@ -66,6 +61,7 @@ class ElasticsearchTrialSearcher:
         Args:
             patient_profile: Patient profile text to search
             top_k: Number of results to return
+            return_fields: Optional list of field names to return from Elasticsearch
 
         Returns:
             List of trial results with id and distance (score)
@@ -80,7 +76,7 @@ class ElasticsearchTrialSearcher:
             "multi_match": {
                 "query": query_text,
                 "fields": self.search_fields,
-                "type": "cross_fields",
+                "type": "best_fields",
                 "operator": "or",
                 # "minimum_should_match": "30%",
             }
@@ -94,6 +90,10 @@ class ElasticsearchTrialSearcher:
             "query": query,
         }
 
+        # Add _source filter if return_fields is specified
+        if return_fields is not None:
+            body["_source"] = return_fields
+
         # Run sync ES call in a thread to keep async API symmetric
         def _do_search():
             return self.es.client.search(index=self.index_name, body=body)
@@ -103,12 +103,14 @@ class ElasticsearchTrialSearcher:
         hits = resp.get("hits", {}).get("hits", [])
         results: List[Dict] = []
         for h in hits:
-            results.append(
-                {
-                    "id": h.get("_id"),
-                    "distance": float(h.get("_score", 0.0)),
-                }
-            )
+            result = {
+                "id": h.get("_id"),
+                "distance": float(h.get("_score", 0.0)),
+            }
+            # Add source fields if they exist
+            if "_source" in h:
+                result.update(h["_source"])
+            results.append(result)
 
         return results
 
@@ -122,20 +124,18 @@ class ElasticsearchTrialSearcher:
         Search for clinical trials matching patient profile using only the 'text' field.
 
         This method searches only in the combined 'text' field which contains
-        title, summary, description, and criteria from CTnlp ClinicalTrial.
+        title, summary, description, and criteria.
 
         Args:
             patient_profile: Patient profile text to search
             top_k: Number of results to return
-            return_fields: Optional list of field names to return from Elasticsearch.
-                          If None, returns all fields. Example: ["nct_id", "brief_title"]
+            return_fields: Optional list of field names to return
 
         Returns:
             List of trial results with id, distance (score), and optionally source fields
         """
 
         query_text = self._prepare_search_text(patient_profile)
-        # query_text = patient_profile
         if not query_text:
             return []
 
@@ -154,11 +154,8 @@ class ElasticsearchTrialSearcher:
             "query": query,
         }
 
-        # Add _source filter if return_fields is specified
         if return_fields is not None:
             body["_source"] = return_fields
-
-        # Run sync ES call in a thread to keep async API symmetric
 
         def _do_search():
             return self.es.client.search(index=self.index_name, body=body)
@@ -172,7 +169,6 @@ class ElasticsearchTrialSearcher:
                 "id": h.get("_id"),
                 "distance": float(h.get("_score", 0.0)),
             }
-            # Add source fields if they exist
             if "_source" in h:
                 result.update(h["_source"])
             results.append(result)
@@ -219,9 +215,7 @@ def demo():
         index_name = settings.es_index_name
         searcher = ElasticsearchTrialSearcher(index_name=index_name)
 
-        results = await searcher.get_trials_by_text(
-            patient_profile, top_k=5, return_fields=["nct_id", "brief_title"]
-        )
+        results = await searcher.search_trials(patient_profile, top_k=5, return_fields=["nct_id", "brief_title"])
         print(results)
 
     asyncio.run(run_demo())
