@@ -29,3 +29,8 @@ class GraphState(TypedDict):
     reranked_results: list  # Results after LLM reranking
     final_answer: str  # Synthesized answer for the user
     top_k: int  # Number of results to retrieve (default 10)
+
+    # Token usage tracking
+    prompt_tokens: int  # Total input tokens across all LLM calls
+    completion_tokens: int  # Total output tokens across all LLM calls
+    total_tokens: int  # Total tokens (prompt + completion)

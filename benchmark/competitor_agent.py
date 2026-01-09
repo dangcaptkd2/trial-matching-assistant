@@ -24,7 +24,17 @@ async def gpt_invoke(user_input: str) -> dict:
     llm = ChatOpenAI(model=settings.llm_model, temperature=settings.temperature)
     response = await llm.ainvoke([HumanMessage(content=user_input)])
 
-    return response.content
+    # Extract token usage
+    tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        tokens = {
+            "prompt_tokens": usage.get("input_tokens", 0),
+            "completion_tokens": usage.get("output_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        }
+
+    return {"response": response.content, "tokens": tokens}
 
 
 def load_dataset(dataset_file: str) -> list:

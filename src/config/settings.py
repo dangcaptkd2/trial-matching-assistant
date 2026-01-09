@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     # API Keys and URLs
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = None
-    # elasticsearch_url: Optional[str] = "http://localhost:9200"
-    elasticsearch_url: Optional[str] = "http://elasticsearch:9200"
+    elasticsearch_url: Optional[str] = "http://localhost:9200"
+    # elasticsearch_url: Optional[str] = "http://elasticsearch:9200"
 
     # LangSmith Settings
     langchain_api_key: Optional[str] = None
@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     es_index_name: str = "aact"
 
     # PostgreSQL Settings
-    # postgres_host: str = "localhost"
-    postgres_host: str = "postgres"
-    postgres_port: int = 5432
+    postgres_host: str = "localhost"
+    # postgres_host: str = "postgres"
+    postgres_port: int = 5433
     postgres_database: str = "aact"
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"

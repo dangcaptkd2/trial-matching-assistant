@@ -124,6 +124,19 @@ def intent_classification_node(state: GraphState) -> GraphState:
     # Get structured output
     result = structured_llm.invoke([HumanMessage(content=prompt)], config=config)
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(result, "__dict__") and hasattr(result, "usage_metadata"):
+        usage = result.usage_metadata
+        if usage:
+            prompt_tokens += usage.get("input_tokens", 0)
+            completion_tokens += usage.get("output_tokens", 0)
+            total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with user input
     updated_messages = list(messages) if messages else []
     updated_messages.append(HumanMessage(content=user_input))
@@ -143,13 +156,16 @@ def intent_classification_node(state: GraphState) -> GraphState:
         if not trial_ids:
             trial_ids = None
 
-    # Return LLM's extracted data
+    # Return LLM's extracted data with token tracking
     return {
         "messages": updated_messages,
         "intent_type": result.intent_type.value,
         "patient_info": patient_info,
         "trial_ids": trial_ids,
         "clarification_reason": result.clarification_reason,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -187,6 +203,18 @@ def reception_node(state: GraphState) -> GraphState:
     response = reception_llm.invoke([HumanMessage(content=prompt)], config=config)
     chitchat_response = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with assistant response
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=chitchat_response))
@@ -194,6 +222,9 @@ def reception_node(state: GraphState) -> GraphState:
     return {
         "messages": updated_messages,
         "chitchat_response": chitchat_response,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -230,6 +261,18 @@ def translate_terms_node(state: GraphState) -> GraphState:
     response = translate_llm.invoke([HumanMessage(content=prompt)], config=config)
     final_answer = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with assistant response
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=final_answer))
@@ -237,6 +280,9 @@ def translate_terms_node(state: GraphState) -> GraphState:
     return {
         "messages": updated_messages,
         "final_answer": final_answer,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -330,6 +376,11 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
     if not search_results:
         return {"reranked_results": []}
 
+    # Track token usage across all LLM calls
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
     # Create LLM instance with structured output for cross-encoding
     cross_encoder_llm = ChatOpenAI(
         model=settings.llm_model,
@@ -339,15 +390,18 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
     )
     structured_llm = cross_encoder_llm.with_structured_output(RerankScore)
 
-    async def score_trial(trial: dict) -> dict:
+    async def score_trial(trial: dict) -> tuple[dict, dict]:
         """Use LLM to score a single trial against patient profile"""
         eligibility = trial.get("eligibility_criteria", "")
         if not eligibility:
-            return {
-                **trial,
-                "llm_score": 0.0,
-                "match_reasoning": "No eligibility criteria available",
-            }
+            return (
+                {
+                    **trial,
+                    "llm_score": 0.0,
+                    "match_reasoning": "No eligibility criteria available",
+                },
+                {},
+            )
 
         # Truncate eligibility criteria to prevent token limit issues
         # Keep first 800 characters (roughly 600-800 tokens) to leave room for
@@ -366,15 +420,32 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
         # Get structured output
         result = await structured_llm.ainvoke([HumanMessage(content=prompt)], config=config)
 
-        return {
-            **trial,
-            "llm_score": result.score,
-            "match_reasoning": result.reasoning,
-        }
+        # Extract token usage
+        usage_data = {}
+        if hasattr(result, "usage_metadata") and result.usage_metadata:
+            usage_data = result.usage_metadata
+
+        return (
+            {
+                **trial,
+                "llm_score": result.score,
+                "match_reasoning": result.reasoning,
+            },
+            usage_data,
+        )
 
     # Run all LLM calls in parallel - much simpler with async node!
     tasks = [score_trial(trial) for trial in search_results]
-    scored_results = await asyncio.gather(*tasks)
+    results_with_tokens = await asyncio.gather(*tasks)
+
+    # Separate results and aggregate tokens
+    scored_results = []
+    for result, usage in results_with_tokens:
+        scored_results.append(result)
+        if usage:
+            prompt_tokens += usage.get("input_tokens", 0)
+            completion_tokens += usage.get("output_tokens", 0)
+            total_tokens += usage.get("total_tokens", 0)
 
     # Sort by LLM score (descending)
     scored_results.sort(key=lambda x: x.get("llm_score", 0.0), reverse=True)
@@ -427,7 +498,12 @@ async def rerank_with_llm_node(state: GraphState) -> GraphState:
             }
         )
 
-    return {"reranked_results": reranked_results}
+    return {
+        "reranked_results": reranked_results,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+    }
 
 
 def synthesize_answer_node(state: GraphState) -> GraphState:
@@ -503,6 +579,18 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
     response = synthesis_llm.invoke([HumanMessage(content=prompt)], config=config)
     final_answer = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with final answer
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=final_answer))
@@ -511,6 +599,9 @@ def synthesize_answer_node(state: GraphState) -> GraphState:
         "final_answer": final_answer,
         "messages": updated_messages,
         "synthesis_prompt": prompt,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -628,6 +719,18 @@ async def clarify_node(state: GraphState) -> GraphState:
     response = clarify_llm.invoke([HumanMessage(content=prompt)], config=config)
     clarification_response = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with clarification response
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=clarification_response))
@@ -635,6 +738,9 @@ async def clarify_node(state: GraphState) -> GraphState:
     return {
         "chitchat_response": clarification_response,
         "messages": updated_messages,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -770,6 +876,18 @@ def summarize_trial_node(state: GraphState) -> GraphState:
     response = synthesis_llm.invoke([HumanMessage(content=prompt)], config=config)
     final_answer = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with final answer
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=final_answer))
@@ -777,6 +895,9 @@ def summarize_trial_node(state: GraphState) -> GraphState:
     return {
         "final_answer": final_answer,
         "messages": updated_messages,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -840,6 +961,18 @@ async def check_eligibility_node(state: GraphState) -> GraphState:
     response = check_llm.invoke([HumanMessage(content=prompt)], config=config)
     final_answer = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=final_answer))
@@ -847,6 +980,9 @@ async def check_eligibility_node(state: GraphState) -> GraphState:
     return {
         "final_answer": final_answer,
         "messages": updated_messages,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -856,6 +992,11 @@ def explain_criteria_node(state: GraphState) -> GraphState:
     messages = state.get("messages", [])
     user_input = state.get("user_input", "")
 
+    # Track token usage across all trials
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
     if not trial_data or all("error" in trial for trial in trial_data):
         final_answer = "I couldn't find information about the requested trial(s). Please provide a valid trial ID (e.g., NCT12345678)."
         updated_messages = list(messages) if messages else []
@@ -863,6 +1004,9 @@ def explain_criteria_node(state: GraphState) -> GraphState:
         return {
             "final_answer": final_answer,
             "messages": updated_messages,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
         }
 
     # Get conversation context
@@ -904,6 +1048,13 @@ def explain_criteria_node(state: GraphState) -> GraphState:
         response = explain_llm.invoke([HumanMessage(content=prompt)], config=config)
         explanation = response.content.strip()
 
+        # Extract token usage from response
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            usage = response.usage_metadata
+            prompt_tokens += usage.get("input_tokens", 0)
+            completion_tokens += usage.get("output_tokens", 0)
+            total_tokens += usage.get("total_tokens", 0)
+
         # Add trial header if multiple trials
         if len(trial_data) > 1:
             explanations.append(f"\n## {trial_title} ({trial_id})\n\n{explanation}\n")
@@ -920,6 +1071,9 @@ def explain_criteria_node(state: GraphState) -> GraphState:
     return {
         "final_answer": final_answer,
         "messages": updated_messages,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -999,6 +1153,18 @@ def compare_trials_node(state: GraphState) -> GraphState:
     response = compare_llm.invoke([HumanMessage(content=prompt)], config=config)
     final_answer = response.content.strip()
 
+    # Track token usage
+    prompt_tokens = state.get("prompt_tokens", 0)
+    completion_tokens = state.get("completion_tokens", 0)
+    total_tokens = state.get("total_tokens", 0)
+
+    # Extract token usage from response
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        usage = response.usage_metadata
+        prompt_tokens += usage.get("input_tokens", 0)
+        completion_tokens += usage.get("output_tokens", 0)
+        total_tokens += usage.get("total_tokens", 0)
+
     # Update messages with final answer
     updated_messages = list(messages) if messages else []
     updated_messages.append(AIMessage(content=final_answer))
@@ -1006,6 +1172,9 @@ def compare_trials_node(state: GraphState) -> GraphState:
     return {
         "final_answer": final_answer,
         "messages": updated_messages,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 

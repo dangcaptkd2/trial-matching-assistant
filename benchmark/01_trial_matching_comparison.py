@@ -43,11 +43,16 @@ async def run_single_topic_comparison(
     chatgpt_trial_count = 0
     chatgpt_elapsed = 0.0
     chatgpt_llm_scores = {}
+    chatgpt_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     if evaluate_chatgpt:
         chatgpt_start = datetime.now()
-        chatgpt_response_text = await gpt_invoke(query)
+        chatgpt_result = await gpt_invoke(query)
         chatgpt_elapsed = (datetime.now() - chatgpt_start).total_seconds()
+
+        # Extract response and tokens
+        chatgpt_response_text = chatgpt_result.get("response", "")
+        chatgpt_tokens = chatgpt_result.get("tokens", chatgpt_tokens)
 
         # Extract trial IDs from ChatGPT response
         chatgpt_trial_ids = extract_trial_ids_from_text(chatgpt_response_text)
@@ -78,6 +83,13 @@ async def run_single_topic_comparison(
     workflow_trial_ids = extract_trial_ids_from_text(workflow_response)
     workflow_trial_count = len(workflow_trial_ids)
 
+    # Extract token usage from workflow result
+    workflow_tokens = {
+        "prompt_tokens": workflow_result_data.get("prompt_tokens", 0) if workflow_result_data else 0,
+        "completion_tokens": workflow_result_data.get("completion_tokens", 0) if workflow_result_data else 0,
+        "total_tokens": workflow_result_data.get("total_tokens", 0) if workflow_result_data else 0,
+    }
+
     # Run LLM evaluation for Workflow
     workflow_llm_scores = {}
     if workflow_result_data:
@@ -94,6 +106,7 @@ async def run_single_topic_comparison(
             "trial_ids": workflow_trial_ids,
             "trial_count": workflow_trial_count,
             "execution_time": round(workflow_elapsed, 2),
+            "tokens": workflow_tokens,
             "llm_scores": workflow_llm_scores,
         },
         "language": language,
@@ -106,6 +119,7 @@ async def run_single_topic_comparison(
             "trial_ids_extracted": chatgpt_trial_ids,
             "trial_count": chatgpt_trial_count,
             "execution_time": round(chatgpt_elapsed, 2),
+            "tokens": chatgpt_tokens,
             "llm_scores": chatgpt_llm_scores,
         }
 
@@ -183,6 +197,23 @@ async def run_evaluation(
             chatgpt_avg["execution_time_avg"] = round(
                 sum(r["chatgpt"]["execution_time"] for r in results) / len(results), 2
             )
+            # Token usage statistics
+            chatgpt_avg["avg_prompt_tokens"] = round(
+                sum(r["chatgpt"].get("tokens", {}).get("prompt_tokens", 0) for r in results) / len(results), 2
+            )
+            chatgpt_avg["avg_completion_tokens"] = round(
+                sum(r["chatgpt"].get("tokens", {}).get("completion_tokens", 0) for r in results) / len(results), 2
+            )
+            chatgpt_avg["avg_total_tokens"] = round(
+                sum(r["chatgpt"].get("tokens", {}).get("total_tokens", 0) for r in results) / len(results), 2
+            )
+            chatgpt_avg["total_prompt_tokens"] = sum(
+                r["chatgpt"].get("tokens", {}).get("prompt_tokens", 0) for r in results
+            )
+            chatgpt_avg["total_completion_tokens"] = sum(
+                r["chatgpt"].get("tokens", {}).get("completion_tokens", 0) for r in results
+            )
+            chatgpt_avg["total_tokens"] = sum(r["chatgpt"].get("tokens", {}).get("total_tokens", 0) for r in results)
             chatgpt_avg["total_scored"] = len(chatgpt_scored)
             average_scores["chatgpt"] = chatgpt_avg
 
@@ -202,6 +233,23 @@ async def run_evaluation(
         workflow_avg["execution_time_avg"] = round(
             sum(r["workflow"]["execution_time"] for r in results) / len(results), 2
         )
+        # Token usage statistics
+        workflow_avg["avg_prompt_tokens"] = round(
+            sum(r["workflow"].get("tokens", {}).get("prompt_tokens", 0) for r in results) / len(results), 2
+        )
+        workflow_avg["avg_completion_tokens"] = round(
+            sum(r["workflow"].get("tokens", {}).get("completion_tokens", 0) for r in results) / len(results), 2
+        )
+        workflow_avg["avg_total_tokens"] = round(
+            sum(r["workflow"].get("tokens", {}).get("total_tokens", 0) for r in results) / len(results), 2
+        )
+        workflow_avg["total_prompt_tokens"] = sum(
+            r["workflow"].get("tokens", {}).get("prompt_tokens", 0) for r in results
+        )
+        workflow_avg["total_completion_tokens"] = sum(
+            r["workflow"].get("tokens", {}).get("completion_tokens", 0) for r in results
+        )
+        workflow_avg["total_tokens"] = sum(r["workflow"].get("tokens", {}).get("total_tokens", 0) for r in results)
         workflow_avg["total_scored"] = len(workflow_scored)
         average_scores["workflow"] = workflow_avg
 
@@ -262,6 +310,7 @@ def main():
 
     dataset_file = "benchmark/datasets/01_matching_dataset.json"
     output_file_name = f"medgemma-4b-it/01_matching_comparison_results_{args.lang}.json"
+    # output_file_name = f"gpt-4.1-nano/01_matching_comparison_results_{args.lang}.json"
     asyncio.run(
         run_evaluation(
             dataset_file=dataset_file,
