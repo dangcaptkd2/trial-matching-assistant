@@ -1,0 +1,46 @@
+# Production Dockerfile
+# Optimized for smaller image size and security
+
+FROM python:3.12-slim AS base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    unzip \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock README.md ./
+
+# Install dependencies (production mode, no dev dependencies)
+RUN uv sync --frozen --no-dev
+
+# Copy application code
+COPY src ./src
+COPY data_pipeline ./data_pipeline
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app && \
+    mkdir -p /app/data/downloads /app/data/logs && \
+    chown -R appuser:appuser /app/data
+
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# Default command runs the API (no reload in production)
+CMD ["uv", "run", "python", "-m", "src.api"]
