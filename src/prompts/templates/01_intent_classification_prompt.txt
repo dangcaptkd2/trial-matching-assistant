@@ -30,6 +30,7 @@ EXTRACTION:
 - patient_info: Extract ALL patient information as a single string (age, gender, condition, symptoms, diagnosis, treatment). Return null if no patient info provided.
   **IMPORTANT: If the user input is in a language other than English, translate the patient information to English. The patient_info field must always be in English because it will be used to search an English database.**
 - trial_ids: Extract ALL trial IDs mentioned (format: NCT followed by 8 digits). Return as list of strings, or null if none found.
+- location_info: Extract location information if the user mentions cities, states, countries, regions, or hospital/facility names where they want to find trials. Return as a simple free-text string (e.g., "Vietnam", "Ho Chi Minh City", "Memorial Hospital", "California"). Return null if no location mentioned.
 
 {conversation_context}
 
@@ -42,26 +43,30 @@ Respond with JSON:
     "intent_type": "<GREETING | OFF_TOPIC | FIND_TRIALS | SUMMARIZE_TRIAL | CHECK_ELIGIBILITY | EXPLAIN_CRITERIA | COMPARE_TRIALS | TRANSLATE_TERMS | NEEDS_CLARIFICATION>",
     "patient_info": "<extracted patient information string or null>",
     "trial_ids": [<list of extracted trial IDs like ['NCT12345678'] or null>],
+    "location_info": "<extracted location as free-text string or null>",
     "clarification_reason": "<brief reason if NEEDS_CLARIFICATION, else ''>"
 }}
 
 EXAMPLES:
-- "Hello" → {{"intent_type": "GREETING", "patient_info": null, "trial_ids": null, "clarification_reason": ""}}
-- "What's the weather?" → {{"intent_type": "OFF_TOPIC", "patient_info": null, "trial_ids": null, "clarification_reason": ""}}
-- "58-year-old woman with breast cancer" → {{"intent_type": "FIND_TRIALS", "patient_info": "58-year-old woman with breast cancer", "trial_ids": null, "clarification_reason": ""}}
-- "Find trials for me" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "wants to find trials but no patient info provided"}}
-- "Summarize NCT12345678" → {{"intent_type": "SUMMARIZE_TRIAL", "patient_info": null, "trial_ids": ["NCT12345678"], "clarification_reason": ""}}
-- "Summarize NCT12345678 and NCT98765432" → {{"intent_type": "SUMMARIZE_TRIAL", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432"], "clarification_reason": ""}}
-- "Tell me about that breast cancer trial" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "wants trial summary but no trial ID provided"}}
-- "Am I eligible for NCT12345678? I have stage 3 lung cancer" → {{"intent_type": "CHECK_ELIGIBILITY", "patient_info": "stage 3 lung cancer", "trial_ids": ["NCT12345678"], "clarification_reason": ""}}
-- "Check eligibility for NCT12345678" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": ["NCT12345678"], "clarification_reason": "wants eligibility check but no patient info provided"}}
-- "Explain the eligibility rules for NCT12345678 in simple English" → {{"intent_type": "EXPLAIN_CRITERIA", "patient_info": null, "trial_ids": ["NCT12345678"], "clarification_reason": ""}}
-- "What are the inclusion and exclusion criteria for this trial?" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "wants to explain criteria but no trial ID provided"}}
-- "What does 'progression-free survival' mean?" → {{"intent_type": "TRANSLATE_TERMS", "patient_info": null, "trial_ids": null, "clarification_reason": ""}}
-- "Explain EGFR mutation" → {{"intent_type": "TRANSLATE_TERMS", "patient_info": null, "trial_ids": null, "clarification_reason": ""}}
-- "What do these terms mean: adjuvant therapy and metastasis?" → {{"intent_type": "TRANSLATE_TERMS", "patient_info": null, "trial_ids": null, "clarification_reason": ""}}
-- "Compare NCT12345678 and NCT98765432" → {{"intent_type": "COMPARE_TRIALS", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432"], "clarification_reason": ""}}
-- "Compare these three breast cancer trials: NCT12345678, NCT98765432, and NCT11111111" → {{"intent_type": "COMPARE_TRIALS", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432", "NCT11111111"], "clarification_reason": ""}}
-- "Which trial is less demanding: NCT12345678 or NCT98765432?" → {{"intent_type": "COMPARE_TRIALS", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432"], "clarification_reason": ""}}
-- "Compare NCT12345678" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": ["NCT12345678"], "clarification_reason": "wants to compare trials but only 1 trial ID provided, need at least 2"}}
-- "" (empty input) → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "clarification_reason": "empty input"}}
+- "Hello" → {{"intent_type": "GREETING", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": ""}}
+- "What's the weather?" → {{"intent_type": "OFF_TOPIC", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": ""}}
+- "58-year-old woman with breast cancer" → {{"intent_type": "FIND_TRIALS", "patient_info": "58-year-old woman with breast cancer", "trial_ids": null, "location_info": null, "clarification_reason": ""}}
+- "Find trials for lung cancer in Vietnam" → {{"intent_type": "FIND_TRIALS", "patient_info": "lung cancer", "trial_ids": null, "location_info": "Vietnam", "clarification_reason": ""}}
+- "I have diabetes and I live in Ho Chi Minh City" → {{"intent_type": "FIND_TRIALS", "patient_info": "diabetes", "trial_ids": null, "location_info": "Ho Chi Minh City", "clarification_reason": ""}}
+- "Breast cancer trials at Memorial Hospital" → {{"intent_type": "FIND_TRIALS", "patient_info": "breast cancer", "trial_ids": null, "location_info": "Memorial Hospital", "clarification_reason": ""}}
+- "Find trials for me" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": "wants to find trials but no patient info provided"}}
+- "Summarize NCT12345678" → {{"intent_type": "SUMMARIZE_TRIAL", "patient_info": null, "trial_ids": ["NCT12345678"], "location_info": null, "clarification_reason": ""}}
+- "Summarize NCT12345678 and NCT98765432" → {{"intent_type": "SUMMARIZE_TRIAL", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432"], "location_info": null, "clarification_reason": ""}}
+- "Tell me about that breast cancer trial" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": "wants trial summary but no trial ID provided"}}
+- "Am I eligible for NCT12345678? I have stage 3 lung cancer" → {{"intent_type": "CHECK_ELIGIBILITY", "patient_info": "stage 3 lung cancer", "trial_ids": ["NCT12345678"], "location_info": null, "clarification_reason": ""}}
+- "Check eligibility for NCT12345678" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": ["NCT12345678"], "location_info": null, "clarification_reason": "wants eligibility check but no patient info provided"}}
+- "Explain the eligibility rules for NCT12345678 in simple English" → {{"intent_type": "EXPLAIN_CRITERIA", "patient_info": null, "trial_ids": ["NCT12345678"], "location_info": null, "clarification_reason": ""}}
+- "What are the inclusion and exclusion criteria for this trial?" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": "wants to explain criteria but no trial ID provided"}}
+- "What does 'progression-free survival' mean?" → {{"intent_type": "TRANSLATE_TERMS", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": ""}}
+- "Explain EGFR mutation" → {{"intent_type": "TRANSLATE_TERMS", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": ""}}
+- "What do these terms mean: adjuvant therapy and metastasis?" → {{"intent_type": "TRANSLATE_TERMS", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": ""}}
+- "Compare NCT12345678 and NCT98765432" → {{"intent_type": "COMPARE_TRIALS", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432"], "location_info": null, "clarification_reason": ""}}
+- "Compare these three breast cancer trials: NCT12345678, NCT98765432, and NCT11111111" → {{"intent_type": "COMPARE_TRIALS", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432", "NCT11111111"], "location_info": null, "clarification_reason": ""}}
+- "Which trial is less demanding: NCT12345678 or NCT98765432?" → {{"intent_type": "COMPARE_TRIALS", "patient_info": null, "trial_ids": ["NCT12345678", "NCT98765432"], "location_info": null, "clarification_reason": ""}}
+- "Compare NCT12345678" → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": ["NCT12345678"], "location_info": null, "clarification_reason": "wants to compare trials but only 1 trial ID provided, need at least 2"}}
+- "" (empty input) → {{"intent_type": "NEEDS_CLARIFICATION", "patient_info": null, "trial_ids": null, "location_info": null, "clarification_reason": "empty input"}}

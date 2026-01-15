@@ -37,6 +37,10 @@ class IntentClassification(BaseModel):
         default=None,
         description="List of extracted trial IDs (format: NCT followed by 8 digits). Return as list of strings, or null if none found.",
     )
+    location_info: Optional[str] = Field(
+        default=None,
+        description="Extracted location information as free-text (city, state, country, hospital name, region). Examples: 'Vietnam', 'Ho Chi Minh City', 'Memorial Hospital', 'California'. Return null if no location mentioned.",
+    )
     clarification_reason: str = Field(
         default="",
         description="Brief reason if NEEDS_CLARIFICATION, else empty string",

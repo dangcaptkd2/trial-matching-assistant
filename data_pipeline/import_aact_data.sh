@@ -6,12 +6,12 @@
 set -e  # Exit on any error
 
 # Configuration
-CONTAINER_NAME="postgres_db"
+CONTAINER_NAME="clinical-trial-postgres"
 DB_NAME="aact"
 DB_USER="postgres"
 DB_PASSWORD="postgres"
 DB_HOST="localhost"
-DB_PORT="5432"
+DB_PORT="5433"
 
 # Colors for output
 RED='\033[0;31m'

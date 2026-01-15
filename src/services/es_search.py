@@ -43,6 +43,8 @@ class ElasticsearchTrialSearcher:
             "keywords",
             "mesh_terms_conditions",
             "mesh_terms_interventions",
+            "facility_names",
+            "sites_text",
         ]
 
     def _prepare_search_text(self, patient_profile: str) -> str:
@@ -204,6 +206,186 @@ class ElasticsearchTrialSearcher:
         """
         results = await self.search_trials(patient_profile, top_k)
         return self.format_results(results)
+
+    async def search_trials_with_location(
+        self,
+        patient_profile: str,
+        city: Optional[str] = None,
+        state: Optional[str] = None,
+        country: Optional[str] = None,
+        location_text: Optional[str] = None,
+        top_k: int = 20,
+        return_fields: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        """
+        Search for clinical trials with optional location filtering.
+
+        Args:
+            patient_profile: Patient profile text to search
+            city: Optional city filter (exact match)
+            state: Optional state filter (exact match)
+            country: Optional country filter (exact match)
+            location_text: Optional free-text location search (searches facility_names and sites_text)
+            top_k: Number of results to return
+            return_fields: Optional list of field names to return
+
+        Returns:
+            List of trial results matching both text and location criteria
+        """
+        query_text = self._prepare_search_text(patient_profile)
+        if not query_text:
+            return []
+
+        # Build must clauses - start with patient profile search
+        must_clauses = [
+            {
+                "multi_match": {
+                    "query": query_text,
+                    "fields": self.search_fields,
+                    "type": "best_fields",
+                    "operator": "or",
+                }
+            }
+        ]
+
+        # Add free-text location search to must clauses if provided
+        if location_text:
+            must_clauses.append(
+                {
+                    "multi_match": {
+                        "query": location_text,
+                        "fields": ["facility_names", "sites_text"],
+                        "type": "best_fields",
+                    }
+                }
+            )
+
+        # Add exact location filters if provided
+        filter_clauses = []
+        if city:
+            filter_clauses.append({"term": {"cities": city}})
+        if state:
+            filter_clauses.append({"term": {"states": state}})
+        if country:
+            filter_clauses.append({"term": {"countries": country}})
+
+        # Build query
+        if filter_clauses:
+            query = {"bool": {"must": must_clauses, "filter": filter_clauses}}
+        else:
+            query = {"bool": {"must": must_clauses}}
+
+        body = {
+            "size": top_k,
+            "query": query,
+        }
+
+        if return_fields is not None:
+            body["_source"] = return_fields
+
+        # Execute search
+        def _do_search():
+            return self.es.client.search(index=self.index_name, body=body)
+
+        resp = await asyncio.get_running_loop().run_in_executor(None, _do_search)
+
+        # Format results
+        hits = resp.get("hits", {}).get("hits", [])
+        results: List[Dict] = []
+        for h in hits:
+            result = {
+                "id": h.get("_id"),
+                "distance": float(h.get("_score", 0.0)),
+            }
+            if "_source" in h:
+                result.update(h["_source"])
+            results.append(result)
+
+        return results
+
+    async def search_trials_by_location(
+        self,
+        city: Optional[str] = None,
+        state: Optional[str] = None,
+        country: Optional[str] = None,
+        location_text: Optional[str] = None,
+        top_k: int = 20,
+        return_fields: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        """
+        Search for clinical trials by location only (no patient profile).
+
+        Args:
+            city: Optional exact city filter
+            state: Optional exact state filter
+            country: Optional exact country filter
+            location_text: Optional free-text location search
+            top_k: Number of results to return
+            return_fields: Optional list of field names to return
+
+        Returns:
+            List of trial results in the specified location(s)
+        """
+        filter_clauses = []
+        must_clauses = []
+
+        # Add exact location filters
+        if city:
+            filter_clauses.append({"term": {"cities": city}})
+        if state:
+            filter_clauses.append({"term": {"states": state}})
+        if country:
+            filter_clauses.append({"term": {"countries": country}})
+
+        # Add free-text location search
+        if location_text:
+            must_clauses.append(
+                {
+                    "multi_match": {
+                        "query": location_text,
+                        "fields": ["facility_names", "sites_text"],
+                        "type": "best_fields",
+                    }
+                }
+            )
+
+        # Build query
+        if not filter_clauses and not must_clauses:
+            return []  # No location criteria provided
+
+        query = {"bool": {}}
+        if must_clauses:
+            query["bool"]["must"] = must_clauses
+        if filter_clauses:
+            query["bool"]["filter"] = filter_clauses
+
+        body = {
+            "size": top_k,
+            "query": query,
+        }
+
+        if return_fields is not None:
+            body["_source"] = return_fields
+
+        # Execute search
+        def _do_search():
+            return self.es.client.search(index=self.index_name, body=body)
+
+        resp = await asyncio.get_running_loop().run_in_executor(None, _do_search)
+
+        # Format results
+        hits = resp.get("hits", {}).get("hits", [])
+        results: List[Dict] = []
+        for h in hits:
+            result = {
+                "id": h.get("_id"),
+                "distance": float(h.get("_score", 0.0)),
+            }
+            if "_source" in h:
+                result.update(h["_source"])
+            results.append(result)
+
+        return results
 
 
 def demo():

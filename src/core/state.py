@@ -17,6 +17,7 @@ class GraphState(TypedDict):
     )
     patient_info: str  # Extracted patient information (string or None)
     trial_ids: list  # List of extracted trial IDs (e.g., ["NCT12345678"] or None)
+    location_info: str  # Extracted location information (city, country, facility name, or None)
     clarification_reason: str  # Minimal context for clarification node
 
     # Trial and search fields

@@ -144,6 +144,7 @@ def intent_classification_node(state: GraphState) -> GraphState:
     # Extract data from structured output
     patient_info = result.patient_info
     trial_ids = result.trial_ids
+    location_info = result.location_info
 
     # Normalize: convert null to None, ensure trial_ids is list or None
     if patient_info is None or patient_info == "":
@@ -155,6 +156,8 @@ def intent_classification_node(state: GraphState) -> GraphState:
         trial_ids = [tid.upper() if isinstance(tid, str) else tid for tid in trial_ids if tid]
         if not trial_ids:
             trial_ids = None
+    if location_info is None or location_info == "":
+        location_info = None
 
     # Return LLM's extracted data with token tracking
     return {
@@ -162,6 +165,7 @@ def intent_classification_node(state: GraphState) -> GraphState:
         "intent_type": result.intent_type.value,
         "patient_info": patient_info,
         "trial_ids": trial_ids,
+        "location_info": location_info,
         "clarification_reason": result.clarification_reason,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -332,22 +336,37 @@ def route_after_fetch(state: GraphState) -> str:
 
 
 async def search_clinical_trials_node(state: GraphState) -> GraphState:
-    """Node: Search clinical trials using Elasticsearch"""
+    """Node: Search clinical trials using Elasticsearch with optional location filtering"""
     patient_info = state.get("patient_info", "")
+    location_info = state.get("location_info")
     top_k = state.get("top_k", 10)
 
     if not patient_info:
         return {"search_results": []}
 
-    # Directly call the async function - no need for event loop juggling!
-    search_results = await es_searcher.search_trials(
-        patient_profile=patient_info,
-        top_k=top_k,
-        return_fields=[
-            "eligibility_criteria",
-            "official_title",
-        ],
-    )
+    # Use location-aware search if location is provided
+    if location_info:
+        search_results = await es_searcher.search_trials_with_location(
+            patient_profile=patient_info,
+            location_text=location_info,  # Use free-text search for best results
+            top_k=top_k,
+            return_fields=[
+                "eligibility_criteria",
+                "official_title",
+                "facility_names",
+                "cities",
+            ],
+        )
+    else:
+        # Standard search without location filtering
+        search_results = await es_searcher.search_trials(
+            patient_profile=patient_info,
+            top_k=top_k,
+            return_fields=[
+                "eligibility_criteria",
+                "official_title",
+            ],
+        )
 
     # Format results with eligibility criteria
     formatted_results = []
