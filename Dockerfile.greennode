@@ -1,0 +1,43 @@
+# GreenNode/Jupyter Notebook Compatible Dockerfile
+# This image can be used as a custom image in GreenNode
+# Built for AMD64 architecture (x86_64) to ensure compatibility with cloud servers
+
+FROM --platform=linux/amd64 python:3.12-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    unzip \
+    postgresql-client \
+    git \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy dependency files
+COPY pyproject.toml uv.lock README.md ./
+
+# Install dependencies (production mode)
+RUN uv sync --frozen --no-dev
+
+# Copy application code
+COPY src ./src
+COPY data_pipeline ./data_pipeline
+
+# Create data directories
+RUN mkdir -p /workspace/data/downloads /workspace/data/logs /workspace/scripts
+
+# Expose ports
+EXPOSE 8000 5432 9200
+
+# Set environment variables for Jupyter
+ENV SHELL=/bin/bash
+
+# Run FastAPI application
+CMD ["uv", "run", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

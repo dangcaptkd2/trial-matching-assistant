@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # PostgreSQL Settings
     postgres_host: str = "localhost"
     # postgres_host: str = "postgres"
-    postgres_port: int = 5433
+    postgres_port: int = 5432
     postgres_database: str = "aact"
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"

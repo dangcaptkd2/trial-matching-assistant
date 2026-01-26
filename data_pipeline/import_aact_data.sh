@@ -11,7 +11,7 @@ DB_NAME="aact"
 DB_USER="postgres"
 DB_PASSWORD="postgres"
 DB_HOST="localhost"
-DB_PORT="5433"
+DB_PORT="5432"
 
 # Colors for output
 RED='\033[0;31m'

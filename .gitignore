@@ -224,3 +224,4 @@ uv.lock
 data/
 .chainlit/
 .files/
+.env.prod

@@ -1,7 +1,8 @@
 # Production Dockerfile
 # Optimized for smaller image size and security
+# Built for AMD64 architecture (x86_64) to ensure compatibility with cloud servers
 
-FROM python:3.12-slim AS base
+FROM --platform=linux/amd64 python:3.12-slim AS base
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

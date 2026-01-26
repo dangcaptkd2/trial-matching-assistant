@@ -1,0 +1,222 @@
+# All-in-One Docker Container for Clinical Trial Assistant
+# Includes: PostgreSQL + Elasticsearch 7.17 + FastAPI App
+# Built for AMD64 architecture for RunPod deployment
+# Using Ubuntu 22.04 LTS for stable package availability
+
+FROM --platform=linux/amd64 ubuntu:22.04
+
+# Set environment to non-interactive
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    gnupg \
+    ca-certificates \
+    lsb-release \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python 3.12 from deadsnakes PPA
+RUN add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PostgreSQL
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql \
+    postgresql-contrib \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install OpenJDK for Elasticsearch
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-11-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install additional utilities (excluding supervisor - will install via pip)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    vim \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install supervisor via pip for Python 3.12 compatibility
+RUN python3.12 -m ensurepip --upgrade && \
+    python3.12 -m pip install --upgrade pip && \
+    python3.12 -m pip install --no-cache-dir supervisor
+
+# Create python symlink
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python
+
+# Install uv for Python package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy dependency files
+COPY pyproject.toml uv.lock README.md ./
+
+# Install Python dependencies
+RUN /root/.local/bin/uv sync --frozen --no-dev
+
+# Copy application code
+COPY src ./src
+COPY data_pipeline ./data_pipeline
+
+# Download and install Elasticsearch 7.17.16
+RUN wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.17.16-amd64.deb && \
+    dpkg -i elasticsearch-7.17.16-amd64.deb && \
+    rm elasticsearch-7.17.16-amd64.deb
+
+# Configure Elasticsearch
+RUN echo "discovery.type: single-node" >> /etc/elasticsearch/elasticsearch.yml && \
+    echo "xpack.security.enabled: false" >> /etc/elasticsearch/elasticsearch.yml && \
+    echo "network.host: 0.0.0.0" >> /etc/elasticsearch/elasticsearch.yml && \
+    echo "http.port: 9200" >> /etc/elasticsearch/elasticsearch.yml && \
+    echo "cluster.name: clinical-trials" >> /etc/elasticsearch/elasticsearch.yml
+
+# Create necessary directories
+RUN mkdir -p /var/lib/postgresql/data \
+    /var/lib/elasticsearch \
+    /var/log/supervisor \
+    /workspace/data/downloads \
+    /workspace/data/logs
+
+# Set permissions
+RUN chown -R postgres:postgres /var/lib/postgresql && \
+    chown -R elasticsearch:elasticsearch /var/lib/elasticsearch /etc/elasticsearch && \
+    chmod -R 755 /workspace
+
+# Create supervisord configuration
+RUN mkdir -p /etc/supervisor/conf.d
+COPY --chmod=644 <<EOF /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:postgresql]
+user=postgres
+command=/usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/data
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/postgresql.log
+stderr_logfile=/var/log/supervisor/postgresql-error.log
+priority=1
+
+[program:elasticsearch]
+user=elasticsearch
+environment=ES_JAVA_OPTS="-Xms512m -Xmx512m"
+command=/usr/share/elasticsearch/bin/elasticsearch
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/elasticsearch.log
+stderr_logfile=/var/log/supervisor/elasticsearch-error.log
+priority=2
+
+[program:fastapi]
+user=root
+directory=/workspace
+command=/workspace/.venv/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/fastapi.log
+stderr_logfile=/var/log/supervisor/fastapi-error.log
+priority=3
+environment=POSTGRES_HOST="localhost",POSTGRES_PORT="5432",POSTGRES_DATABASE="aact",POSTGRES_USER="postgres",POSTGRES_PASSWORD="postgres",ELASTICSEARCH_URL="http://localhost:9200",ES_INDEX_NAME="aact"
+EOF
+
+# Create startup script
+COPY --chmod=755 <<'SCRIPT' /workspace/startup.sh
+#!/bin/bash
+set -e
+
+echo "========================================="
+echo "  Clinical Trial Assistant - All-in-One"
+echo "========================================="
+echo ""
+
+# Find PostgreSQL version
+PG_VERSION=$(ls /usr/lib/postgresql/ | head -1)
+echo "PostgreSQL version: $PG_VERSION"
+
+# Initialize PostgreSQL if needed
+if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+    echo "🔧 Initializing PostgreSQL..."
+    su - postgres -c "/usr/lib/postgresql/$PG_VERSION/bin/initdb -D /var/lib/postgresql/data"
+    
+    # Start PostgreSQL temporarily
+    su - postgres -c "/usr/lib/postgresql/$PG_VERSION/bin/pg_ctl -D /var/lib/postgresql/data -l /tmp/pg-init.log start"
+    sleep 5
+    
+    # Create database
+    su - postgres -c "psql -c \"CREATE DATABASE aact;\""
+    su - postgres -c "psql -c \"ALTER USER postgres WITH PASSWORD 'postgres';\""
+    
+    # Import data if available
+    if [ -f /workspace/data/downloads/postgres.dmp ]; then
+        echo "📦 Importing AACT data (may take 10-20 minutes)..."
+        su - postgres -c "pg_restore -d aact -v -O -x --no-owner --no-acl /workspace/data/downloads/postgres.dmp" 2>&1 | grep -v "ERROR" || true
+        echo "✅ Data import completed!"
+    else
+        echo "⚠️  No dump file found at /workspace/data/downloads/postgres.dmp"
+    fi
+    
+    # Stop temporary PostgreSQL
+    su - postgres -c "/usr/lib/postgresql/$PG_VERSION/bin/pg_ctl -D /var/lib/postgresql/data stop"
+    sleep 2
+    echo "✅ PostgreSQL initialized!"
+else
+    echo "✅ PostgreSQL already initialized"
+fi
+
+# Initialize Elasticsearch data directory
+if [ ! -d /var/lib/elasticsearch/nodes ]; then
+    echo "🔧 Initializing Elasticsearch..."
+    mkdir -p /var/lib/elasticsearch
+    chown -R elasticsearch:elasticsearch /var/lib/elasticsearch
+    echo "✅ Elasticsearch initialized!"
+else
+    echo "✅ Elasticsearch already initialized"
+fi
+
+echo ""
+echo "🚀 Starting all services..."
+echo "   - PostgreSQL on port 5432"
+echo "   - Elasticsearch on port 9200"
+echo "   - FastAPI on port 8000"
+echo ""
+
+# Start supervisord (installed via pip, so it's in /usr/local/bin)
+exec supervisord -c /etc/supervisor/conf.d/supervisord.conf
+SCRIPT
+
+# Expose ports
+EXPOSE 8000 5432 9200
+
+# Environment variables
+ENV POSTGRES_HOST=localhost \
+    POSTGRES_PORT=5432 \
+    POSTGRES_DATABASE=aact \
+    POSTGRES_USER=postgres \
+    POSTGRES_PASSWORD=postgres \
+    ELASTICSEARCH_URL=http://localhost:9200 \
+    ES_INDEX_NAME=aact
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run startup script
+CMD ["/workspace/startup.sh"]
