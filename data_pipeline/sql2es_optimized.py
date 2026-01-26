@@ -20,6 +20,7 @@ pg_conn_params = {
     "dbname": settings.postgres_database,
     "user": settings.postgres_user,
     "password": settings.postgres_password,
+    "client_encoding": "utf8",
 }
 
 # Elasticsearch connection

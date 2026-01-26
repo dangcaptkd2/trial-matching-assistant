@@ -33,6 +33,7 @@ def get_trial_by_id(trial_id: str) -> Optional[Dict]:
         "port": settings.postgres_port,
         "database": settings.postgres_database,
         "user": settings.postgres_user,
+        "client_encoding": "utf8",
     }
 
     if settings.postgres_password:
@@ -136,6 +137,7 @@ def get_trials_by_ids(trial_ids: list[str]) -> list[Dict]:
         "port": settings.postgres_port,
         "database": settings.postgres_database,
         "user": settings.postgres_user,
+        "client_encoding": "utf8",
     }
 
     if settings.postgres_password:
