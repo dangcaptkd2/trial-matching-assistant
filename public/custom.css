@@ -1,0 +1,147 @@
+/* Clinical Trial Assistant Custom Styles */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Logo in top-left corner - using correct Chainlit header structure */
+#header {
+    background-image: url('/public/logo.png') !important;
+    background-size: auto 64px !important;
+    background-repeat: no-repeat !important;
+    background-position: 24px center !important;
+    padding-left: 220px !important;
+}
+
+/* Adjust logo on smaller screens */
+@media (max-width: 768px) {
+    #header {
+        background-size: auto 48px !important;
+        padding-left: 240px !important;
+    }
+}
+
+/* Hide the logo on very small screens */
+@media (max-width: 600px) {
+    #header {
+        background-size: auto 36px !important;
+        padding-left: 200px !important;
+    }
+}
+
+/* Enhanced Message Styling */
+.message-container {
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.message-container:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.1);
+}
+
+/* Assistant messages with subtle medical accent */
+.message.assistant {
+    background: linear-gradient(135deg,
+            hsl(var(--card)) 0%,
+            hsl(var(--accent) / 0.03) 100%);
+    border-left: 3px solid hsl(var(--primary));
+}
+
+/* User messages */
+.message.user {
+    background: hsl(var(--primary) / 0.08);
+    border-right: 3px solid hsl(var(--primary));
+}
+
+/* Input area enhancement */
+.chat-input {
+    border: 2px solid hsl(var(--border));
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.chat-input:focus-within {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+}
+
+/* Buttons with medical theme */
+.primary-button,
+button[type="submit"] {
+    background: linear-gradient(135deg,
+            hsl(var(--primary)) 0%,
+            hsl(var(--accent)) 100%);
+    transition: all 0.2s ease;
+}
+
+.primary-button:hover,
+button[type="submit"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.3);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.5);
+}
+
+/* Loading indicator with medical pulse */
+@keyframes medical-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(1.05);
+    }
+}
+
+.loading-indicator {
+    animation: medical-pulse 1.5s ease-in-out infinite;
+    color: hsl(var(--primary));
+}
+
+/* Welcome message enhancement */
+.welcome-message {
+    background: linear-gradient(135deg,
+            hsl(var(--primary) / 0.05) 0%,
+            hsl(var(--accent) / 0.05) 100%);
+    border: 1px solid hsl(var(--primary) / 0.2);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+/* Code blocks in medical theme */
+pre code {
+    background: hsl(var(--muted)) !important;
+    border-left: 3px solid hsl(var(--primary));
+    border-radius: 6px;
+}
+
+/* Avatar styling enhancement */
+.avatar-container {
+    border: 2px solid hsl(var(--primary) / 0.2);
+    border-radius: 50%;
+    padding: 2px;
+    background: linear-gradient(135deg,
+            hsl(var(--primary) / 0.1) 0%,
+            hsl(var(--accent) / 0.1) 100%);
+}

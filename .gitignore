@@ -222,6 +222,10 @@ scripts/
 uv.lock
 .DS_Store
 data/
-.chainlit/
+# Chainlit - keep config but ignore temporary/cache files
+.chainlit/.files/
+.chainlit/chat_files/
+.chainlit/*.db
+.chainlit/*.db-*
 .files/
 .env.prod

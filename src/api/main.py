@@ -2,12 +2,13 @@
 
 from contextlib import asynccontextmanager
 
+from chainlit.utils import mount_chainlit
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routes import chat, conversations, health, models
-from chainlit.utils import mount_chainlit
 
 
 @asynccontextmanager
@@ -41,6 +42,9 @@ app.include_router(conversations.router, prefix="/api", tags=["conversations"])
 # OpenAI-compatible endpoints
 app.include_router(chat.router, prefix="/v1", tags=["openai-chat"])
 app.include_router(models.router, prefix="/v1", tags=["openai-models"])
+
+# Mount static files (must be before Chainlit mount)
+app.mount("/public", StaticFiles(directory="public"), name="public")
 
 # Mount Chainlit UI
 mount_chainlit(app=app, target="src/ui/chainlit_app.py", path="/demo")

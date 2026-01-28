@@ -6,7 +6,7 @@ The Clinical Trial Assistant is built as a modular system with a clear separatio
 
 ```mermaid
 graph TD
-    User[User] -->|Interacts| UI[User Interface<br/>Open WebUI / Streamlit]
+    User[User] -->|Interacts| UI[User Interface<br/>Chainlit]
     UI -->|HTTP/REST| API[Backend API<br/>FastAPI]
     
     subgraph "Application Logic"
@@ -29,13 +29,18 @@ graph TD
         Agent -->|Completion| LLM[LLM Provider<br/>OpenAI / vLLM]
         Reranker -->|Ranking| LLM
     end
+
+    subgraph "Observability"
+        Agent -.->|Traces| Langfuse[Langfuse]
+    end
 ```
 
 ## Core Components
 
 ### 1. User Interface (UI)
 The system supports multiple frontend interfaces:
-- **Open WebUI**: A robust, chat-like interface running in Docker, communicating with the backend via OpenAI-compatible endpoints.
+- **Chainlit**: The primary chat interface for interacting with the assistant.
+- **Open WebUI**: Alternative chat-like interface running in Docker.
 - **Streamlit**: Used for specific tools or visualizations (e.g., benchmark visualization).
 - **CLI**: Command-line tools for development and testing.
 
@@ -61,6 +66,13 @@ The heart of the application is a **LangGraph** workflow that manages the conver
 ### 5. External Services
 - **LLM Provider**: The system is designed to be model-agnostic, supporting OpenAI's GPT models or self-hosted models (like via vLLM) through standardized API calls.
 
+### 6. Observability
+- **Langfuse**: Used for tracing, monitoring, and debugging LLM applications. It captures:
+    - Full execution traces of the LangGraph workflow.
+    - Token usage and costs.
+    - Latency breakdown by node.
+    - Input/Output for every step.
+
 ## Technology Stack
 
 | Component | Technology | Description |
@@ -70,6 +82,7 @@ The heart of the application is a **LangGraph** workflow that manages the conver
 | **Agent Orchestration** | LangGraph | State machine based agent framework |
 | **Search Engine** | Elasticsearch | Distributed search and analytics engine |
 | **Database** | PostgreSQL | Relational database for raw data storage |
+| **Observability** | Langfuse | Tracing and monitoring for LLM applications |
 | **LLM Interface** | OpenAI SDK | Standard client for LLM interaction |
 | **Containerization** | Docker | Application deployment and isolation |
 | **Package Manager** | uv | Fast Python package installer and resolver |
