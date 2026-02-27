@@ -96,7 +96,7 @@ def run_import(dmp_file: Path) -> bool:
     logger.info("STEP 2: Importing to PostgreSQL")
     logger.info("=" * 60)
 
-    cmd = ["bash", "data_pipeline/import_aact_data.sh", str(dmp_file)]
+    cmd = ["bash", "data_pipeline/import_aact_data_docker.sh", str(dmp_file)]
 
     try:
         logger.info(f"Running command: {' '.join(cmd)}")
