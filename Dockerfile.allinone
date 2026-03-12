@@ -72,6 +72,7 @@ RUN /root/.local/bin/uv sync --frozen --no-dev
 # Copy application code
 COPY src ./src
 COPY data_pipeline ./data_pipeline
+COPY public ./public
 
 # Download and install Elasticsearch 7.17.16
 RUN wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.17.16-amd64.deb && \

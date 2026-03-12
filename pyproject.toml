@@ -6,12 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "chainlit>=1.0.0",
-    "dotenv>=0.9.9",
+    "python-dotenv>=1.0.0",
     "elasticsearch==7.17.9",
     "fastapi>=0.122.0",
+    "langchain-core>=0.3.0",
     "langchain-openai>=1.1.0",
     "langgraph>=1.0.4",
-    "langgraph-cli[inmem]>=0.4.7",
     "loguru>=0.7.3",
     "psycopg2-binary>=2.9.0",
     "pydantic-settings>=2.12.0",
