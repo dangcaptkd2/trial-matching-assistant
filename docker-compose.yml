@@ -49,100 +49,100 @@ services:
       - trial-assistant-network
     restart: unless-stopped
 
-  # Data Pipeline Initialization (runs once on startup)
-  data-pipeline:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: clinical-trial-data-pipeline
-    env_file:
-      - .env
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DATABASE=aact
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - ES_INDEX_NAME=aact
-    volumes:
-      - ./data:/app/data
-      - ./data_pipeline:/app/data_pipeline
-    depends_on:
-      postgres:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-    networks:
-      - trial-assistant-network
-    # This runs the data pipeline then exits
-    # Comment out if you don't want to run pipeline on startup
-    # Or run manually: docker-compose run --rm data-pipeline
-    command: >
-      sh -c "
-        echo '🚀 Starting data pipeline...'
-        echo '📥 Step 1: Download AACT data'
-        uv run python data_pipeline/download_aact.py --output-dir /app/data/downloads || echo 'Download failed or skipped'
+#   # Data Pipeline Initialization (runs once on startup)
+#   data-pipeline:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: clinical-trial-data-pipeline
+#     env_file:
+#       - .env
+#     environment:
+#       - POSTGRES_HOST=postgres
+#       - POSTGRES_PORT=5432
+#       - POSTGRES_DATABASE=aact
+#       - POSTGRES_USER=postgres
+#       - POSTGRES_PASSWORD=postgres
+#       - ELASTICSEARCH_URL=http://elasticsearch:9200
+#       - ES_INDEX_NAME=aact
+#     volumes:
+#       - ./data:/app/data
+#       - ./data_pipeline:/app/data_pipeline
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#       elasticsearch:
+#         condition: service_healthy
+#     networks:
+#       - trial-assistant-network
+#     # This runs the data pipeline then exits
+#     # Comment out if you don't want to run pipeline on startup
+#     # Or run manually: docker-compose run --rm data-pipeline
+#     command: >
+#       sh -c "
+#         echo '🚀 Starting data pipeline...'
+#         echo '📥 Step 1: Download AACT data'
+#         uv run python data_pipeline/download_aact.py --output-dir /app/data/downloads || echo 'Download failed or skipped'
         
-        echo '📦 Step 2: Import to PostgreSQL'
-        if ls /app/data/downloads/*.dmp 1> /dev/null 2>&1; then
-          LATEST_DMP=$$(ls -t /app/data/downloads/*.dmp | head -1)
-          echo \"Found dump file: $$LATEST_DMP\"
-          bash data_pipeline/import_aact_data_docker.sh \"$$LATEST_DMP\" || echo 'Import failed or already imported'
-        else
-          echo 'No .dmp file found, skipping import'
-        fi
+#         echo '📦 Step 2: Import to PostgreSQL'
+#         if ls /app/data/downloads/*.dmp 1> /dev/null 2>&1; then
+#           LATEST_DMP=$$(ls -t /app/data/downloads/*.dmp | head -1)
+#           echo \"Found dump file: $$LATEST_DMP\"
+#           bash data_pipeline/import_aact_data_docker.sh \"$$LATEST_DMP\" || echo 'Import failed or already imported'
+#         else
+#           echo 'No .dmp file found, skipping import'
+#         fi
         
-        echo '🔄 Step 3: Create/Refresh Materialized View'
-        uv run python data_pipeline/create_materialized_view.py --refresh || \
-        uv run python data_pipeline/create_materialized_view.py || \
-        echo 'Materialized view creation skipped'
+#         echo '🔄 Step 3: Create/Refresh Materialized View'
+#         uv run python data_pipeline/create_materialized_view.py --refresh || \
+#         uv run python data_pipeline/create_materialized_view.py || \
+#         echo 'Materialized view creation skipped'
         
-        echo '📊 Step 4: Index to Elasticsearch'
-        uv run python data_pipeline/sql2es_optimized.py || echo 'Indexing failed or skipped'
+#         echo '📊 Step 4: Index to Elasticsearch'
+#         uv run python data_pipeline/sql2es_optimized.py || echo 'Indexing failed or skipped'
         
-        echo '✅ Data pipeline completed!'
-      "
-    profiles:
-      - init  # Only runs when explicitly called with --profile init
+#         echo '✅ Data pipeline completed!'
+#       "
+#     profiles:
+#       - init  # Only runs when explicitly called with --profile init
 
-  # FastAPI Application
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: clinical-trial-assistant-api
-    ports:
-      - "${API_PORT:-8000}:8000"
-    env_file:
-      - .env
-    environment:
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DATABASE=aact
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - ES_INDEX_NAME=aact
-    volumes:
-      - ./data:/app/data
-      - ./src:/app/src
-    depends_on:
-      postgres:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    networks:
-      - trial-assistant-network
+#   # FastAPI Application
+#   api:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: clinical-trial-assistant-api
+#     ports:
+#       - "${API_PORT:-8000}:8000"
+#     env_file:
+#       - .env
+#     environment:
+#       - API_HOST=0.0.0.0
+#       - API_PORT=8000
+#       - POSTGRES_HOST=postgres
+#       - POSTGRES_PORT=5432
+#       - POSTGRES_DATABASE=aact
+#       - POSTGRES_USER=postgres
+#       - POSTGRES_PASSWORD=postgres
+#       - ELASTICSEARCH_URL=http://elasticsearch:9200
+#       - ES_INDEX_NAME=aact
+#     volumes:
+#       - ./data:/app/data
+#       - ./src:/app/src
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#       elasticsearch:
+#         condition: service_healthy
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+#     networks:
+#       - trial-assistant-network
 
 volumes:
   postgres_data:

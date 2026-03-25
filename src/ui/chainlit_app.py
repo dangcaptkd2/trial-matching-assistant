@@ -17,15 +17,24 @@ async def on_chat_start():
     # Store thread_id in user session
     cl.user_session.set("thread_id", cl.user_session.get("id"))
     
-    # Send welcome message
+    # # Send welcome message
+    # await cl.Message(
+    #     content="👋 Welcome to the Clinical Trial Matching Assistant! I can help you:\n\n"
+    #     "- Find clinical trials based on patient conditions\n"
+    #     "- Summarize specific trials\n"
+    #     "- Check eligibility for trials\n"
+    #     "- Explain medical terms and criteria\n"
+    #     "- Compare different trials\n\n"
+    #     "How can I assist you today?"
+    # ).send()
     await cl.Message(
-        content="👋 Welcome to the Clinical Trial Matching Assistant! I can help you:\n\n"
-        "- Find clinical trials based on patient conditions\n"
-        "- Summarize specific trials\n"
-        "- Check eligibility for trials\n"
-        "- Explain medical terms and criteria\n"
-        "- Compare different trials\n\n"
-        "How can I assist you today?"
+        content="👋 Chào mừng bạn đến với Trợ lý Ghép nối Thử nghiệm Lâm sàng! Tôi có thể giúp bạn:\n\n"
+        "- Tìm kiếm thử nghiệm lâm sàng dựa trên tình trạng bệnh của bệnh nhân\n"
+        "- Tóm tắt các thử nghiệm cụ thể\n"
+        "- Kiểm tra điều kiện tham gia thử nghiệm\n"
+        "- Giải thích các thuật ngữ và tiêu chí y khoa\n"
+        "- So sánh các thử nghiệm khác nhau\n\n"
+        "Tôi có thể hỗ trợ bạn như thế nào hôm nay?"
     ).send()
 
 

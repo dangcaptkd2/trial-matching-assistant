@@ -26,4 +26,4 @@ pipeline:
   log_dir: "./logs"
   notify_on_failure: true
   notify_on_success: false
-  email: null  # Optional: email for notifications
+  email: null
