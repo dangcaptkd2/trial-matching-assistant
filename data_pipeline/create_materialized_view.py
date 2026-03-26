@@ -71,6 +71,10 @@ def create_materialized_view():
         (SELECT array_agg(DISTINCT bi.mesh_term) 
          FROM ctgov.browse_interventions bi 
          WHERE bi.nct_id = s.nct_id) AS mesh_terms_interventions,
+        (SELECT e.criteria 
+         FROM ctgov.eligibilities e 
+         WHERE e.nct_id = s.nct_id 
+         LIMIT 1) AS eligibility_criteria,
         (SELECT array_agg(DISTINCT f.city ORDER BY f.city) 
          FROM ctgov.facilities f 
          WHERE f.nct_id = s.nct_id AND f.city IS NOT NULL) AS cities,
@@ -91,7 +95,7 @@ def create_materialized_view():
     """
 
     create_index_sql = f"""
-    CREATE INDEX idx_studies_for_es_nct 
+    CREATE UNIQUE INDEX idx_studies_for_es_nct 
     ON {MATERIALIZED_VIEW_NAME}(nct_id);
     """
 

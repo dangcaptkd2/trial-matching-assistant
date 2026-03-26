@@ -43,6 +43,7 @@ mapping = {
             "cities": {"type": "keyword"},
             "states": {"type": "keyword"},
             "countries": {"type": "keyword"},
+            "eligibility_criteria": {"type": "text"},
             "facility_names": {"type": "text"},
             "sites_text": {"type": "text"},
         }
@@ -51,12 +52,12 @@ mapping = {
 
 
 def create_index():
-    """Create Elasticsearch index with mappings if it doesn't exist."""
-    if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body=mapping)
-        logger.info(f"Created index {index_name}")
-    else:
-        logger.info(f"Index {index_name} already exists")
+    """Delete (if exists) and recreate Elasticsearch index with fresh mappings."""
+    if es.indices.exists(index=index_name):
+        es.indices.delete(index=index_name)
+        logger.info(f"Deleted existing index {index_name}")
+    es.indices.create(index=index_name, body=mapping)
+    logger.info(f"Created index {index_name}")
 
 
 def get_total_trials():
@@ -109,6 +110,7 @@ class PostgreSQLStreamingFetcher:
             nct_id,
             title,
             official_title,
+            eligibility_criteria,
             brief_summary,
             conditions,
             keywords,
@@ -161,7 +163,7 @@ def transform_to_documents(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 doc[field] = []
 
         # Handle NULL text fields
-        for field in ["brief_summary", "sites_text"]:
+        for field in ["brief_summary", "sites_text", "eligibility_criteria"]:
             if doc.get(field) is None:
                 doc[field] = ""
 
