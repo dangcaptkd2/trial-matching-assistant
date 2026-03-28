@@ -772,9 +772,13 @@ async def fetch_trial_data_node(state: GraphState) -> GraphState:
             "trial_data": [],
         }
 
-    # Fetch trials from PostgreSQL by IDs (batch operation)
+    # Fetch trials from PostgreSQL by IDs (batch operation).
+    # Use wait_for so a hanging query raises TimeoutError instead of blocking forever.
     try:
-        trial_results = await get_trials_by_ids_async(trial_ids)
+        trial_results = await asyncio.wait_for(
+            get_trials_by_ids_async(trial_ids),
+            timeout=30.0,  # 30 seconds max
+        )
 
         # Format results to match expected structure
         formatted_results = []

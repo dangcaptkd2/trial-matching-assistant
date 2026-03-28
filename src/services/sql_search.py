@@ -34,77 +34,99 @@ def get_trial_by_id(trial_id: str) -> Optional[Dict]:
         "database": settings.postgres_database,
         "user": settings.postgres_user,
         "client_encoding": "utf8",
+        "connect_timeout": 10,          # fail fast if DB is unreachable
+        "options": "-c statement_timeout=25000",  # 25s query timeout
     }
 
     if settings.postgres_password:
         conn_params["password"] = settings.postgres_password
 
-    # Modified query to filter by specific trial_id
+    # Use CTEs to pre-aggregate each table independently per nct_id.
+    # This avoids the combinatorial row explosion caused by joining many large
+    # tables before aggregation (which produced billions of intermediate rows).
     query = """
+        WITH
+        cond AS (
+            SELECT nct_id,
+                   array_agg(DISTINCT name) AS conditions,
+                   STRING_AGG(DISTINCT name, E'\n') AS condition_name
+            FROM {schema}.conditions WHERE nct_id = %s GROUP BY nct_id
+        ),
+        interv AS (
+            SELECT nct_id,
+                   array_agg(DISTINCT name) AS interventions,
+                   STRING_AGG(DISTINCT intervention_type || ': ' || name, E'\n') AS intervention_name
+            FROM {schema}.interventions WHERE nct_id = %s GROUP BY nct_id
+        ),
+        kw AS (
+            SELECT nct_id, array_agg(DISTINCT name) AS keywords
+            FROM {schema}.keywords WHERE nct_id = %s GROUP BY nct_id
+        ),
+        bc AS (
+            SELECT nct_id, array_agg(DISTINCT mesh_term) AS mesh_terms_conditions
+            FROM {schema}.browse_conditions WHERE nct_id = %s GROUP BY nct_id
+        ),
+        bi AS (
+            SELECT nct_id, array_agg(DISTINCT mesh_term) AS mesh_terms_interventions
+            FROM {schema}.browse_interventions WHERE nct_id = %s GROUP BY nct_id
+        ),
+        fac AS (
+            SELECT nct_id,
+                   COUNT(DISTINCT CONCAT_WS(', ', name, city, state, country)) AS total_sites,
+                   STRING_AGG(DISTINCT CONCAT_WS(', ', name, city, state, country), E'\n') AS sites
+            FROM {schema}.facilities WHERE nct_id = %s GROUP BY nct_id
+        ),
+        rc AS (
+            SELECT nct_id,
+                   name || ' ' || COALESCE(phone,'') || ' ' || COALESCE(email,'') AS contact
+            FROM {schema}.result_contacts WHERE nct_id = %s LIMIT 1
+        )
         SELECT
             s.nct_id,
-            s.brief_title as title,
+            s.brief_title            AS title,
             s.official_title,
             s.overall_status,
             s.phase,
             s.start_date,
             s.completion_date,
-            array_agg(DISTINCT c.name) AS conditions,
-            array_agg(DISTINCT i.name) AS interventions,
-            array_agg(DISTINCT k.name) AS keywords,
-            array_agg(DISTINCT bc.mesh_term) AS mesh_terms_conditions,
-            array_agg(DISTINCT bi.mesh_term) AS mesh_terms_interventions,
-            bs.description AS brief_summary,
-            STRING_AGG(DISTINCT i.intervention_type || ': ' || i.name, E'\n') AS intervention_name,
-            STRING_AGG(DISTINCT c.name, E'\n') AS condition_name,
-            r.name || ' ' || r.phone || ' ' || r.email AS contact,
-            COUNT(DISTINCT CONCAT_WS(', ', f.city, f.state, f.country)) AS total_sites,
-            STRING_AGG(DISTINCT CONCAT_WS(', ', f.city, f.state, f.country), E'\n') AS sites,
-            s.overall_status AS status,
-            e.criteria AS eligibility_criteria
-        FROM
-            {schema}.studies s
-        LEFT JOIN
-            {schema}.conditions c ON s.nct_id = c.nct_id
-        LEFT JOIN
-            {schema}.interventions i ON s.nct_id = i.nct_id
-        LEFT JOIN
-            {schema}.keywords k ON s.nct_id = k.nct_id
-        LEFT JOIN
-            {schema}.browse_conditions bc ON s.nct_id = bc.nct_id
-        LEFT JOIN
-            {schema}.browse_interventions bi ON s.nct_id = bi.nct_id
-        LEFT JOIN
-            {schema}.brief_summaries bs ON s.nct_id = bs.nct_id
-        LEFT JOIN
-            {schema}.result_contacts AS r ON s.nct_id = r.nct_id
-        LEFT JOIN
-            {schema}.facilities AS f ON s.nct_id = f.nct_id
-        LEFT JOIN
-            {schema}.eligibilities e ON s.nct_id = e.nct_id
-        WHERE
-            s.nct_id = %s
-        GROUP BY
-            s.nct_id, s.brief_title, s.official_title, s.overall_status, s.phase, s.start_date, s.completion_date, bs.description, r.name, r.phone, r.email, e.criteria;
+            s.overall_status         AS status,
+            bs.description           AS brief_summary,
+            e.criteria               AS eligibility_criteria,
+            rc.contact,
+            COALESCE(cond.conditions, '{{}}')               AS conditions,
+            COALESCE(cond.condition_name, '')               AS condition_name,
+            COALESCE(interv.interventions, '{{}}')          AS interventions,
+            COALESCE(interv.intervention_name, '')          AS intervention_name,
+            COALESCE(kw.keywords, '{{}}')                   AS keywords,
+            COALESCE(bc.mesh_terms_conditions, '{{}}')      AS mesh_terms_conditions,
+            COALESCE(bi.mesh_terms_interventions, '{{}}')   AS mesh_terms_interventions,
+            COALESCE(fac.total_sites, 0)                    AS total_sites,
+            COALESCE(fac.sites, '')                         AS sites
+        FROM {schema}.studies s
+        LEFT JOIN {schema}.brief_summaries bs ON bs.nct_id = s.nct_id
+        LEFT JOIN {schema}.eligibilities   e  ON e.nct_id  = s.nct_id
+        LEFT JOIN cond   ON cond.nct_id   = s.nct_id
+        LEFT JOIN interv ON interv.nct_id = s.nct_id
+        LEFT JOIN kw     ON kw.nct_id     = s.nct_id
+        LEFT JOIN bc     ON bc.nct_id     = s.nct_id
+        LEFT JOIN bi     ON bi.nct_id     = s.nct_id
+        LEFT JOIN fac    ON fac.nct_id    = s.nct_id
+        LEFT JOIN rc     ON rc.nct_id     = s.nct_id
+        WHERE s.nct_id = %s;
     """.format(schema=settings.postgres_schema)
 
     try:
-        # Connect to database
         conn = psycopg2.connect(**conn_params)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Execute query
-        cursor.execute(query, (trial_id,))
+        # 8 parameters: one per CTE WHERE clause + final WHERE
+        cursor.execute(query, (trial_id,) * 8)
         result = cursor.fetchone()
 
-        # Close connection
         cursor.close()
         conn.close()
 
-        # Convert result to dictionary if found
-        if result:
-            return dict(result)
-        return None
+        return dict(result) if result else None
 
     except psycopg2.Error as e:
         raise RuntimeError(f"Database error while fetching trial {trial_id}: {str(e)}") from e
@@ -138,74 +160,97 @@ def get_trials_by_ids(trial_ids: list[str]) -> list[Dict]:
         "database": settings.postgres_database,
         "user": settings.postgres_user,
         "client_encoding": "utf8",
+        "connect_timeout": 10,          # fail fast if DB is unreachable
+        "options": "-c statement_timeout=25000",  # 25s query timeout
     }
 
     if settings.postgres_password:
         conn_params["password"] = settings.postgres_password
 
-    # Modified query to filter by multiple trial_ids using IN clause
+    # Use CTEs to pre-aggregate each table independently per nct_id.
+    # Avoids the combinatorial row explosion from joining many large tables.
     query = """
+        WITH
+        cond AS (
+            SELECT nct_id,
+                   array_agg(DISTINCT name) AS conditions,
+                   STRING_AGG(DISTINCT name, E'\n') AS condition_name
+            FROM {schema}.conditions WHERE nct_id = ANY(%s) GROUP BY nct_id
+        ),
+        interv AS (
+            SELECT nct_id,
+                   array_agg(DISTINCT name) AS interventions,
+                   STRING_AGG(DISTINCT intervention_type || ': ' || name, E'\n') AS intervention_name
+            FROM {schema}.interventions WHERE nct_id = ANY(%s) GROUP BY nct_id
+        ),
+        kw AS (
+            SELECT nct_id, array_agg(DISTINCT name) AS keywords
+            FROM {schema}.keywords WHERE nct_id = ANY(%s) GROUP BY nct_id
+        ),
+        bc AS (
+            SELECT nct_id, array_agg(DISTINCT mesh_term) AS mesh_terms_conditions
+            FROM {schema}.browse_conditions WHERE nct_id = ANY(%s) GROUP BY nct_id
+        ),
+        bi AS (
+            SELECT nct_id, array_agg(DISTINCT mesh_term) AS mesh_terms_interventions
+            FROM {schema}.browse_interventions WHERE nct_id = ANY(%s) GROUP BY nct_id
+        ),
+        fac AS (
+            SELECT nct_id,
+                   COUNT(DISTINCT CONCAT_WS(', ', name, city, state, country)) AS total_sites,
+                   STRING_AGG(DISTINCT CONCAT_WS(', ', name, city, state, country), E'\n') AS sites
+            FROM {schema}.facilities WHERE nct_id = ANY(%s) GROUP BY nct_id
+        ),
+        rc AS (
+            SELECT DISTINCT ON (nct_id) nct_id,
+                   name || ' ' || COALESCE(phone,'') || ' ' || COALESCE(email,'') AS contact
+            FROM {schema}.result_contacts WHERE nct_id = ANY(%s) ORDER BY nct_id
+        )
         SELECT
             s.nct_id,
-            s.brief_title as title,
+            s.brief_title            AS title,
             s.official_title,
             s.overall_status,
             s.phase,
             s.start_date,
             s.completion_date,
-            array_agg(DISTINCT c.name) AS conditions,
-            array_agg(DISTINCT i.name) AS interventions,
-            array_agg(DISTINCT k.name) AS keywords,
-            array_agg(DISTINCT bc.mesh_term) AS mesh_terms_conditions,
-            array_agg(DISTINCT bi.mesh_term) AS mesh_terms_interventions,
-            bs.description AS brief_summary,
-            STRING_AGG(DISTINCT i.intervention_type || ': ' || i.name, E'\n') AS intervention_name,
-            STRING_AGG(DISTINCT c.name, E'\n') AS condition_name,
-            r.name || ' ' || r.phone || ' ' || r.email AS contact,
-            COUNT(DISTINCT CONCAT_WS(', ',f.name, f.city, f.state, f.country)) AS total_sites,
-            STRING_AGG(DISTINCT CONCAT_WS(', ', f.name, f.city, f.state, f.country), E'\n') AS sites,
-            s.overall_status AS status,
-            e.criteria AS eligibility_criteria
-        FROM
-            {schema}.studies s
-        LEFT JOIN
-            {schema}.conditions c ON s.nct_id = c.nct_id
-        LEFT JOIN
-            {schema}.interventions i ON s.nct_id = i.nct_id
-        LEFT JOIN
-            {schema}.keywords k ON s.nct_id = k.nct_id
-        LEFT JOIN
-            {schema}.browse_conditions bc ON s.nct_id = bc.nct_id
-        LEFT JOIN
-            {schema}.browse_interventions bi ON s.nct_id = bi.nct_id
-        LEFT JOIN
-            {schema}.brief_summaries bs ON s.nct_id = bs.nct_id
-        LEFT JOIN
-            {schema}.result_contacts AS r ON s.nct_id = r.nct_id
-        LEFT JOIN
-            {schema}.facilities AS f ON s.nct_id = f.nct_id
-        LEFT JOIN
-            {schema}.eligibilities e ON s.nct_id = e.nct_id
-        WHERE
-            s.nct_id = ANY(%s)
-        GROUP BY
-            s.nct_id, s.brief_title, s.official_title, s.overall_status, s.phase, s.start_date, s.completion_date, bs.description, r.name, r.phone, r.email, e.criteria;
+            s.overall_status         AS status,
+            bs.description           AS brief_summary,
+            e.criteria               AS eligibility_criteria,
+            rc.contact,
+            COALESCE(cond.conditions, '{{}}')               AS conditions,
+            COALESCE(cond.condition_name, '')               AS condition_name,
+            COALESCE(interv.interventions, '{{}}')          AS interventions,
+            COALESCE(interv.intervention_name, '')          AS intervention_name,
+            COALESCE(kw.keywords, '{{}}')                   AS keywords,
+            COALESCE(bc.mesh_terms_conditions, '{{}}')      AS mesh_terms_conditions,
+            COALESCE(bi.mesh_terms_interventions, '{{}}')   AS mesh_terms_interventions,
+            COALESCE(fac.total_sites, 0)                    AS total_sites,
+            COALESCE(fac.sites, '')                         AS sites
+        FROM {schema}.studies s
+        LEFT JOIN {schema}.brief_summaries bs ON bs.nct_id = s.nct_id
+        LEFT JOIN {schema}.eligibilities   e  ON e.nct_id  = s.nct_id
+        LEFT JOIN cond   ON cond.nct_id   = s.nct_id
+        LEFT JOIN interv ON interv.nct_id = s.nct_id
+        LEFT JOIN kw     ON kw.nct_id     = s.nct_id
+        LEFT JOIN bc     ON bc.nct_id     = s.nct_id
+        LEFT JOIN bi     ON bi.nct_id     = s.nct_id
+        LEFT JOIN fac    ON fac.nct_id    = s.nct_id
+        LEFT JOIN rc     ON rc.nct_id     = s.nct_id
+        WHERE s.nct_id = ANY(%s);
     """.format(schema=settings.postgres_schema)
 
     try:
-        # Connect to database
         conn = psycopg2.connect(**conn_params)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Execute query with list of trial IDs
-        cursor.execute(query, (trial_ids,))
+        # 8 parameters: one per CTE WHERE clause + final WHERE
+        cursor.execute(query, (trial_ids,) * 8)
         results = cursor.fetchall()
 
-        # Close connection
         cursor.close()
         conn.close()
 
-        # Convert results to list of dictionaries
         return [dict(result) for result in results] if results else []
 
     except psycopg2.Error as e:
