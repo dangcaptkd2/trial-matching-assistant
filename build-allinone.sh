@@ -12,7 +12,7 @@ echo ""
 
 # Configuration
 IMAGE_NAME="dangcaptkd2/trial-matching-assistant"
-TAG="v1.0.0"
+TAG="v1.0.1"
 FULL_IMAGE="${IMAGE_NAME}:${TAG}"
 
 echo "📦 Image: ${FULL_IMAGE}"

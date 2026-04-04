@@ -27,6 +27,8 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY src ./src
 COPY data_pipeline ./data_pipeline
+COPY public ./public
+COPY .chainlit ./.chainlit
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
