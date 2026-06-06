@@ -6,6 +6,17 @@ aact:
   download_dir: "./data/downloads"
   retention_days: 7  # Keep dump files for this many days
 
+trec_trials:
+  download_dir: "./data/trec_trials"
+  index_name: "trec2023_ctnlp"
+  urls:
+    - "https://www.trec-cds.org/2023_data/ClinicalTrials.2023-05-08.trials0.zip"
+    - "https://www.trec-cds.org/2023_data/ClinicalTrials.2023-05-08.trials1.zip"
+    - "https://www.trec-cds.org/2023_data/ClinicalTrials.2023-05-08.trials2.zip"
+    - "https://www.trec-cds.org/2023_data/ClinicalTrials.2023-05-08.trials3.zip"
+    - "https://www.trec-cds.org/2023_data/ClinicalTrials.2023-05-08.trials4.zip"
+    - "https://www.trec-cds.org/2023_data/ClinicalTrials.2023-05-08.trials5.zip"
+
 # PostgreSQL Settings
 postgres:
   container_name: "postgres_db"

@@ -109,6 +109,22 @@ Import only (requires .dmp file):
 bash data_pipeline/import_aact_data.sh data/downloads/20251231_clinical_trials.dmp
 ```
 
+### TREC ClinicalTrials 2023 dataset
+Download the TREC 2023 ClinicalTrials ZIP files:
+```bash
+python data_pipeline/download_trec_trials.py --output-dir ./data/trec_trials
+```
+
+Import the downloaded TREC dataset into Elasticsearch:
+```bash
+python data_pipeline/import_trec_trials_es.py --input-dir ./data/trec_trials --create-index
+```
+
+Index the TREC dataset into an existing Elasticsearch index:
+```bash
+python data_pipeline/import_trec_trials_es.py --input-dir ./data/trec_trials --index-name trec2023_ctnlp
+```
+
 Index only:
 ```bash
 python data_pipeline/sql2es.py

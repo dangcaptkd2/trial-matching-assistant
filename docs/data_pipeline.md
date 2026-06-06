@@ -49,6 +49,19 @@ flowchart TD
     - Performs bulk indexing operations.
 - **Outcome**: A searchable Elasticsearch index (e.g., `trec2023_ctnlp`).
 
+## TREC 2023 ClinicalTrials import
+The repository also supports importing the TREC 2023 ClinicalTrials dataset directly into Elasticsearch.
+
+### 1. Download TREC files
+```bash
+python data_pipeline/download_trec_trials.py --output-dir ./data/trec_trials
+```
+
+### 2. Import into Elasticsearch
+```bash
+python data_pipeline/import_trec_trials_es.py --input-dir ./data/trec_trials --create-index
+```
+
 ## Configuration
 
 Configuration is managed via `data_pipeline/config.yaml`.
