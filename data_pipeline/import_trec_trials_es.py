@@ -1,22 +1,21 @@
-"""Import TREC 2023 ClinicalTrials ZIP files into Elasticsearch."""
+"""Import TREC 2023 ClinicalTrials ZIP files into Elasticsearch using CTnlp parser."""
 
 import argparse
-import json
 import tempfile
 import zipfile
-import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List
 
+from CTnlp.clinical_trial import ClinicalTrial, Intervention
+from CTnlp.parsers import parse_clinical_trials_from_folder
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 from loguru import logger
 
 from src.config.settings import settings
 
+
 DEFAULT_INDEX_NAME = "trec2023_ctnlp"
-SUPPORTED_JSON_EXTENSIONS = {".json", ".jsonl", ".ndjson"}
-SUPPORTED_XML_EXTENSIONS = {".xml"}
 
 
 def load_config(config_path: str = "data_pipeline/config.yaml") -> dict:
@@ -31,27 +30,48 @@ def load_config(config_path: str = "data_pipeline/config.yaml") -> dict:
 
 def connect_elasticsearch(es_url: str) -> Elasticsearch:
     logger.info(f"Connecting to Elasticsearch at {es_url}")
-    es = Elasticsearch([es_url])
+    es = Elasticsearch(
+        [es_url],
+        timeout=60,
+        max_retries=5,
+        retry_on_timeout=True,
+    )
     if not es.ping():
         raise RuntimeError(f"Cannot connect to Elasticsearch at {es_url}")
     return es
 
 
 def create_index(es: Elasticsearch, index_name: str, recreate: bool = False) -> None:
+    """Create Elasticsearch index with clinical trial mappings."""
     mapping = {
         "mappings": {
             "properties": {
                 "nct_id": {"type": "keyword"},
-                "title": {"type": "text"},
+                "identifier": {"type": "keyword"},
+                "org_study_id": {"type": "keyword"},
+                "brief_title": {"type": "text"},
                 "official_title": {"type": "text"},
                 "brief_summary": {"type": "text"},
-                "conditions": {"type": "text"},
-                "interventions": {"type": "text"},
-                "keywords": {"type": "text"},
+                "detailed_description": {"type": "text"},
+                "text": {"type": "text"},
                 "eligibility_criteria": {"type": "text"},
-                "countries": {"type": "keyword"},
-                "cities": {"type": "keyword"},
-                "sites": {"type": "text"},
+                "gender": {"type": "keyword"},
+                "minimum_age": {"type": "integer"},
+                "maximum_age": {"type": "integer"},
+                "accepts_healthy_volunteers": {"type": "boolean"},
+                "study_type": {"type": "keyword"},
+                "inclusion_list": {"type": "text"},
+                "exclusion_list": {"type": "text"},
+                "conditions_list": {"type": "text"},
+                "interventions_list": {"type": "text"},
+                "primary_outcomes_list": {"type": "text"},
+                "secondary_outcomes_list": {"type": "text"},
+                "condition": {"type": "text"},
+                "intervention_type": {"type": "text"},
+                "primary_outcome": {"type": "text"},
+                "drug_name": {"type": "text"},
+                "drug_keywords": {"type": "text"},
+                "general_keywords": {"type": "text"},
             }
         }
     }
@@ -68,192 +88,186 @@ def create_index(es: Elasticsearch, index_name: str, recreate: bool = False) -> 
     es.indices.create(index=index_name, body=mapping)
 
 
-def normalize_value(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: normalize_value(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [normalize_value(v) for v in value]
-    return value
+def normalize_ctnlp_trial_for_es(ct: ClinicalTrial) -> Dict[str, Any]:
+    """Convert CTnlp ClinicalTrial dataclass to ES document format.
+
+    Args:
+        ct: ClinicalTrial dataclass instance from CTnlp
+
+    Returns:
+        Dictionary ready for Elasticsearch indexing
+    """
+
+    def _as_int(val: float | None) -> int:
+        """Convert Optional[float] to int."""
+        if val is None:
+            return 0
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return 0
+
+    def _as_str(val: str | None) -> str:
+        """Convert Optional[str] to str."""
+        return (val or "").strip()
+
+    def _as_list(val: List[str] | None) -> List[str]:
+        """Convert Optional[List[str]] to List[str]."""
+        if val is None:
+            return []
+        return [item.strip() for item in val if item and item.strip()]
+
+    def _interventions_to_names(interventions: List[Intervention] | None) -> List[str]:
+        """Extract intervention names from Intervention objects."""
+        if interventions is None:
+            return []
+        return [
+            interv.name.strip() for interv in interventions if interv and interv.name
+        ]
+
+    def _interventions_to_types(interventions: List[Intervention] | None) -> List[str]:
+        """Extract intervention types from Intervention objects."""
+        if interventions is None:
+            return []
+        return [
+            interv.type.strip() for interv in interventions if interv and interv.type
+        ]
+
+    # Extract intervention names and types
+    intervention_names = _interventions_to_names(ct.interventions)
+    intervention_types = _interventions_to_types(ct.interventions)
+
+    # Build ES document
+    doc = {
+        # Core identifiers
+        "nct_id": _as_str(ct.nct_id),
+        "identifier": _as_str(ct.nct_id),
+        "org_study_id": _as_str(ct.org_study_id),
+        # Titles and descriptions
+        "brief_title": _as_str(ct.brief_title),
+        "official_title": _as_str(ct.official_title),
+        "brief_summary": _as_str(ct.brief_summary),
+        "detailed_description": _as_str(ct.detailed_description),
+        # Important: text field from ClinicalTrial
+        "text": _as_str(ct.text),
+        # Eligibility and demographics
+        "eligibility_criteria": _as_str(ct.criteria),
+        "gender": _as_str(ct.gender.value if ct.gender else None),
+        "minimum_age": _as_int(ct.minimum_age),
+        "maximum_age": _as_int(ct.maximum_age),
+        "accepts_healthy_volunteers": ct.accepts_healthy_volunteers,
+        # Study information
+        "study_type": _as_str(ct.study_type),
+        # Structured lists from CTnlp
+        "inclusion_list": "; ".join(_as_list(ct.inclusion)),
+        "exclusion_list": "; ".join(_as_list(ct.exclusion)),
+        "conditions_list": "; ".join(_as_list(ct.conditions)),
+        "interventions_list": "; ".join(intervention_names),
+        "primary_outcomes_list": "; ".join(_as_list(ct.primary_outcomes)),
+        "secondary_outcomes_list": "; ".join(_as_list(ct.secondary_outcomes)),
+        # Legacy fields for backward compatibility
+        # Join lists into strings for compatibility with existing search
+        "condition": "; ".join(_as_list(ct.conditions)),
+        "intervention_type": "; ".join(intervention_types),
+        "primary_outcome": "; ".join(_as_list(ct.primary_outcomes)),
+        # For drug_name and drug_keywords, use intervention names
+        "drug_name": "; ".join(intervention_names),
+        "drug_keywords": "",  # Not available in CTnlp ClinicalTrial
+        "general_keywords": "",  # Not available in CTnlp ClinicalTrial
+    }
+
+    return doc
 
 
-def normalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
-    normalized = {k: normalize_value(v) for k, v in doc.items()}
-    if "id" in normalized and "nct_id" not in normalized:
-        normalized["nct_id"] = normalized["id"]
-    return normalized
+def generate_es_actions(
+    index_name: str,
+    trials: List[ClinicalTrial],
+) -> Iterator[Dict[str, Any]]:
+    """Convert ClinicalTrial objects to ES bulk actions.
 
+    Args:
+        index_name: Elasticsearch index name
+        trials: List of ClinicalTrial dataclass instances
 
-def parse_json_file(path: Path) -> List[Dict[str, Any]]:
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
+    Yields:
+        ES bulk action dictionaries
+    """
+    for ct in trials:
+        nct_id = (ct.nct_id or "").strip()
+        if not nct_id:
+            continue
 
-    if isinstance(data, list):
-        return [normalize_document(doc) for doc in data if isinstance(doc, dict)]
-
-    if isinstance(data, dict):
-        if "trials" in data and isinstance(data["trials"], list):
-            return [normalize_document(doc) for doc in data["trials"] if isinstance(doc, dict)]
-        if "studies" in data and isinstance(data["studies"], list):
-            return [normalize_document(doc) for doc in data["studies"] if isinstance(doc, dict)]
-        if "clinical_study" in data and isinstance(data["clinical_study"], list):
-            return [normalize_document(doc) for doc in data["clinical_study"] if isinstance(doc, dict)]
-        return [normalize_document(data)]
-
-    return []
-
-
-def parse_json_lines_file(path: Path) -> List[Dict[str, Any]]:
-    docs: List[Dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                doc = json.loads(line)
-                if isinstance(doc, dict):
-                    docs.append(normalize_document(doc))
-            except json.JSONDecodeError as exc:
-                logger.warning(f"Skipping invalid JSON line in {path}: {exc}")
-    return docs
-
-
-def parse_xml_file(path: Path) -> List[Dict[str, Any]]:
-    """Parse TREC clinical trial XML file into a normalized document."""
-    try:
-        tree = ET.parse(path)
-        root = tree.getroot()
-        
-        # Extract trial data from XML
-        doc = {}
-        
-        # Get NCT ID
-        nct_id_elem = root.find(".//nct_id")
-        if nct_id_elem is not None and nct_id_elem.text:
-            doc["nct_id"] = nct_id_elem.text.strip()
-        
-        # Get titles
-        title_elem = root.find(".//official_title")
-        if title_elem is not None and title_elem.text:
-            doc["official_title"] = title_elem.text.strip()
-        else:
-            brief_title_elem = root.find(".//brief_title")
-            if brief_title_elem is not None and brief_title_elem.text:
-                doc["official_title"] = brief_title_elem.text.strip()
-        
-        # Get brief summary
-        brief_summary_elem = root.find(".//brief_summary/textblock")
-        if brief_summary_elem is not None and brief_summary_elem.text:
-            doc["brief_summary"] = brief_summary_elem.text.strip()
-        
-        # Get conditions
-        conditions = []
-        for condition_elem in root.findall(".//condition"):
-            if condition_elem.text:
-                conditions.append(condition_elem.text.strip())
-        if conditions:
-            doc["conditions"] = " ".join(conditions)
-        
-        # Get interventions
-        interventions = []
-        for intervention_elem in root.findall(".//intervention_name"):
-            if intervention_elem.text:
-                interventions.append(intervention_elem.text.strip())
-        if interventions:
-            doc["interventions"] = " ".join(interventions)
-        
-        # Get keywords
-        keywords = []
-        for keyword_elem in root.findall(".//keyword"):
-            if keyword_elem.text:
-                keywords.append(keyword_elem.text.strip())
-        if keywords:
-            doc["keywords"] = " ".join(keywords)
-        
-        # Get eligibility criteria
-        criteria_elem = root.find(".//eligibility/criteria/textblock")
-        if criteria_elem is not None and criteria_elem.text:
-            doc["eligibility_criteria"] = criteria_elem.text.strip()
-        
-        # Get locations (countries, cities)
-        countries = set()
-        cities = set()
-        for facility_elem in root.findall(".//facility"):
-            country_elem = facility_elem.find("country")
-            if country_elem is not None and country_elem.text:
-                countries.add(country_elem.text.strip())
-            city_elem = facility_elem.find("city")
-            if city_elem is not None and city_elem.text:
-                cities.add(city_elem.text.strip())
-        
-        if countries:
-            doc["countries"] = list(countries)
-        if cities:
-            doc["cities"] = list(cities)
-        
-        if doc.get("nct_id"):
-            return [normalize_document(doc)]
-        return []
-    
-    except ET.ParseError as exc:
-        logger.warning(f"Failed to parse XML file {path}: {exc}")
-        return []
-    except Exception as exc:
-        logger.warning(f"Error processing XML file {path}: {exc}")
-        return []
-
-
-def read_documents_from_file(path: Path) -> List[Dict[str, Any]]:
-    suffix = path.suffix.lower()
-    if suffix == ".json":
-        return parse_json_file(path)
-    if suffix in {".jsonl", ".ndjson"}:
-        return parse_json_lines_file(path)
-    if suffix in SUPPORTED_XML_EXTENSIONS:
-        return parse_xml_file(path)
-
-    logger.warning(f"Skipping unsupported file type: {path}")
-    return []
-
-
-def generate_es_actions(documents: Iterator[Dict[str, Any]], index_name: str) -> Iterator[Dict[str, Any]]:
-    for doc in documents:
-        action = {
+        doc = normalize_ctnlp_trial_for_es(ct)
+        yield {
             "_op_type": "index",
             "_index": index_name,
+            "_id": nct_id,
             "_source": doc,
         }
-        if doc.get("nct_id"):
-            action["_id"] = doc["nct_id"]
-        yield action
 
 
-def extract_documents_from_zip(zip_path: Path) -> Iterator[Dict[str, Any]]:
+def extract_and_parse_zip(zip_path: Path) -> List[ClinicalTrial]:
+    """Extract ZIP file and parse clinical trials using CTnlp.
+
+    Args:
+        zip_path: Path to ZIP file containing XML clinical trial files
+
+    Returns:
+        List of parsed ClinicalTrial objects
+    """
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)
+        logger.info(f"Extracting {zip_path} to temporary directory")
+        
         with zipfile.ZipFile(zip_path, "r") as archive:
-            members = [m for m in archive.namelist() if not m.endswith("/")]
-            for member in members:
-                archive.extract(member, temp_dir_path)
-                candidate = temp_dir_path / member
-                # Support both JSON and XML files inside the archive
-                if candidate.suffix.lower() in (SUPPORTED_JSON_EXTENSIONS | SUPPORTED_XML_EXTENSIONS):
-                    for doc in read_documents_from_file(candidate):
-                        yield doc
-                else:
-                    logger.warning(f"Unsupported file inside ZIP: {member}")
+            archive.extractall(temp_dir_path)
+        
+        logger.info(f"Parsing clinical trials from extracted files using CTnlp")
+        try:
+            trials = parse_clinical_trials_from_folder(folder_name=str(temp_dir_path))
+            logger.info(f"Parsed {len(trials)} clinical trials from {zip_path}")
+            return trials
+        except Exception as exc:
+            logger.error(f"Failed to parse trials from {zip_path}: {exc}")
+            raise
 
 
-def index_documents(es: Elasticsearch, index_name: str, documents: Iterator[Dict[str, Any]], chunk_size: int = 1000) -> int:
-    logger.info(f"Indexing documents into {index_name} with chunk size {chunk_size}")
-    success, failed = bulk(es, generate_es_actions(documents, index_name), chunk_size=chunk_size, raise_on_error=False)
+def index_documents(
+    es: Elasticsearch,
+    index_name: str,
+    trials: List[ClinicalTrial],
+    chunk_size: int = 1000,
+) -> int:
+    """Index clinical trials into Elasticsearch.
+
+    Args:
+        es: Elasticsearch client
+        index_name: Target index name
+        trials: List of ClinicalTrial objects to index
+        chunk_size: Number of documents per bulk request
+
+    Returns:
+        Number of successfully indexed documents
+    """
+    logger.info(f"Indexing {len(trials)} trials into {index_name} with chunk size {chunk_size}")
+    success, failed = bulk(
+        es,
+        generate_es_actions(index_name, trials),
+        chunk_size=chunk_size,
+        raise_on_error=False,
+        request_timeout=60,
+    )
+    
     if failed:
         logger.error(f"Bulk indexing completed with {len(failed)} failures")
+    
     return success
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Import TREC 2023 ClinicalTrials data into Elasticsearch")
+    parser = argparse.ArgumentParser(
+        description="Import TREC 2023 ClinicalTrials data into Elasticsearch using CTnlp"
+    )
     parser.add_argument(
         "--input-dir",
         type=Path,
@@ -319,25 +333,28 @@ def main() -> int:
         return 1
 
     total_success = 0
-    total_docs = 0
+    total_trials = 0
     for zip_path in zip_files:
         logger.info(f"Processing archive: {zip_path}")
-        docs = list(extract_documents_from_zip(zip_path))
-        count = len(docs)
-        if count == 0:
-            logger.warning(f"No supported documents found in {zip_path}")
+        try:
+            trials = extract_and_parse_zip(zip_path)
+            if not trials:
+                logger.warning(f"No trials parsed from {zip_path}")
+                continue
+
+            total_trials += len(trials)
+            success = index_documents(es, index_name, trials, chunk_size=args.chunk_size)
+            total_success += success
+            logger.success(f"Indexed {success} / {len(trials)} trials from {zip_path}")
+        except Exception as exc:
+            logger.error(f"Failed to process {zip_path}: {exc}")
             continue
 
-        total_docs += count
-        success = index_documents(es, index_name, iter(docs), chunk_size=args.chunk_size)
-        total_success += success
-        logger.success(f"Indexed {success} / {count} documents from {zip_path}")
-
-    if total_docs == 0:
-        logger.error("No documents were indexed")
+    if total_trials == 0:
+        logger.error("No trials were parsed from any ZIP files")
         return 1
 
-    logger.success(f"✓ Finished importing {total_success} documents into '{index_name}'")
+    logger.success(f"✓ Finished importing {total_success} trials into '{index_name}'")
     return 0
 
 

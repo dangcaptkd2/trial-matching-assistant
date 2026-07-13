@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "requests>=2.31.0",
     "uvicorn>=0.38.0",
+    "ctnlp @ git+https://github.com/WojciechKusa/clinical-trials.git",
 ]
 
 [project.scripts]
@@ -26,6 +27,9 @@ api = "src.api.__main__:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
